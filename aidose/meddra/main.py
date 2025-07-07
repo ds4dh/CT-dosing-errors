@@ -2,19 +2,21 @@ from aidose.meddra.graph import MedDRA
 from aidose.meddra.utils import (parse_arguments, get_descendant_terms, get_descendant_info, get_all_ancestors,
                                  has_complete_path)
 
+from aidose import RESOURCES_DIR
+
 import ast
 import os
 import json
 import csv
 
 # Define file paths (adjust these as needed)
-positive_labels_json = "./data/meddra_positive_labels.json"
-mapped_labels_json = "./data/mapped_labels.json"
-paths_json = "./data/meddra_paths.json"
+positive_labels_json = os.path.join(RESOURCES_DIR, "meddra_positive_labels.json")
+mapped_labels_json = os.path.join(RESOURCES_DIR, "mapped_labels.json")
+paths_json = os.path.join(RESOURCES_DIR, "meddra_paths.json")
 
-positive_labels_csv = "./data/meddra_positive_labels.csv"
-mapped_labels_csv = "./data/mapped_labels.csv"
-paths_csv = "./data/meddra_paths.csv"
+positive_labels_csv = os.path.join(RESOURCES_DIR, "meddra_positive_labels.csv")
+mapped_labels_csv = os.path.join(RESOURCES_DIR, "mapped_labels.csv")
+paths_csv = os.path.join(RESOURCES_DIR, "meddra_paths.csv")
 
 
 def main_a0():
