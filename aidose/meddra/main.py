@@ -5,9 +5,19 @@ from aidose.meddra.utils import (parse_arguments, get_descendant_terms, get_desc
 import ast
 import os
 import json
+import csv
+
+# Define file paths (adjust these as needed)
+positive_labels_json = "./data/meddra_positive_labels.json"
+mapped_labels_json = "./data/mapped_labels.json"
+paths_json = "./data/meddra_paths.json"
+
+positive_labels_csv = "./data/meddra_positive_labels.csv"
+mapped_labels_csv = "./data/mapped_labels.csv"
+paths_csv = "./data/meddra_paths.csv"
 
 
-def main():
+def main_a0():
     args = parse_arguments()
 
     try:
@@ -88,5 +98,81 @@ def main():
     print("Number of descendant instances with 0 complete paths:", instances_with_no_complete_paths)
 
 
+def main_a1():
+    # ----------------------------
+    # Process meddra_positive_labels.json
+    # ----------------------------
+    if os.path.exists(positive_labels_json):
+        with open(positive_labels_json, "r") as f:
+            pos_labels = json.load(f)
+
+        # Expecting a JSON object with a key "terms"
+        terms = pos_labels.get("terms", [])
+
+        with open(positive_labels_csv, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["term"])
+            for term in terms:
+                writer.writerow([term])
+        print(f"Saved {positive_labels_csv}")
+    else:
+        print(f"File not found: {positive_labels_json}")
+
+        # ----------------------------
+        # Process mapped_labels.json
+        # ----------------------------
+    if os.path.exists(mapped_labels_json):
+        with open(mapped_labels_json, "r") as f:
+            mapped_labels = json.load(f)
+
+        # Assuming it's a list of terms
+        with open(mapped_labels_csv, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["term"])
+            for term in mapped_labels:
+                writer.writerow([term])
+        print(f"Saved {mapped_labels_csv}")
+    else:
+        print(f"File not found: {mapped_labels_json}")
+
+        # ----------------------------
+        # Process meddra_paths.json
+        # ----------------------------
+
+    def format_path(path):
+        """
+        Convert a list of tuples (code@level, term) into a formatted string.
+        Each tuple becomes "code@level: term" and steps are joined by " -> ".
+        """
+        return " -> ".join([f"{step[0]}: {step[1]}" for step in path])
+
+    if os.path.exists(paths_json):
+        with open(paths_json, "r") as f:
+            paths_data = json.load(f)
+
+        with open(paths_csv, "w", newline="") as f:
+            writer = csv.writer(f)
+            # Write header row
+            writer.writerow(["HLGT_code", "Descendant_code", "Descendant_term", "Path_index", "Path"])
+
+            # Iterate over each HLGT key
+            for hlgt_key, descendant_info in paths_data.items():
+                # descendant_info is a dictionary mapping descendant node to its info.
+                for descendant_code, info in descendant_info.items():
+                    descendant_term = info.get("term", "")
+                    paths_list = info.get("paths", [])
+
+                    if paths_list:
+                        for idx, path in enumerate(paths_list, start=1):
+                            formatted = format_path(path)
+                            writer.writerow([hlgt_key, descendant_code, descendant_term, idx, formatted])
+                    else:
+                        writer.writerow([hlgt_key, descendant_code, descendant_term, "", ""])
+        print(f"Saved {paths_csv}")
+    else:
+        print(f"File not found: {paths_json}")
+
+
 if __name__ == "__main__":
-    main()
+    main_a0()
+    main_a1()
