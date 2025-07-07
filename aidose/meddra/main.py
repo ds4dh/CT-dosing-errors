@@ -30,8 +30,8 @@ def main_a0():
 
     meddra = MedDRA()
     if not os.path.exists(args.data):
-        print(f"Data directory not found: {args.data}")
-        return
+        raise FileNotFoundError(f"Data directory not found: {args.data}")
+
     meddra.load_data(args.data)
 
     # Produce the same union of descendant terms as before.
@@ -118,7 +118,7 @@ def main_a1():
                 writer.writerow([term])
         print(f"Saved {positive_labels_csv}")
     else:
-        print(f"File not found: {positive_labels_json}")
+        raise FileNotFoundError(f"File not found: {positive_labels_json}")
 
         # ----------------------------
         # Process mapped_labels.json
@@ -135,7 +135,7 @@ def main_a1():
                 writer.writerow([term])
         print(f"Saved {mapped_labels_csv}")
     else:
-        print(f"File not found: {mapped_labels_json}")
+        raise FileNotFoundError(f"File not found: {mapped_labels_json}")
 
         # ----------------------------
         # Process meddra_paths.json
@@ -172,7 +172,7 @@ def main_a1():
                         writer.writerow([hlgt_key, descendant_code, descendant_term, "", ""])
         print(f"Saved {paths_csv}")
     else:
-        print(f"File not found: {paths_json}")
+        raise FileNotFoundError(f"File not found: {paths_json}")
 
 
 if __name__ == "__main__":
