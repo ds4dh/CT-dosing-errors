@@ -8,9 +8,9 @@ CTGov would be avoided.
 """
 
 from __future__ import annotations
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
-from typing import Optional, List, Union, Dict, Any
+from typing import Any
 
 
 # ==============================================================================
@@ -24,17 +24,33 @@ class StudyType(str, Enum):
     EXPANDED_ACCESS = "EXPANDED_ACCESS"
 
 
-class ExpandedAccessType(str, Enum):
-    """The type of expanded access."""
-    INDIVIDUAL = "INDIVIDUAL"
-    INTERMEDIATE = "INTERMEDIATE"
-    TREATMENT = "TREATMENT"
+class ExpandedAccessTypes(BaseModel):
+    """
+    The type(s) of expanded access available, represented as a set of boolean flags.
+    """
+    individual: bool | None = Field(default=None,
+                                    description="For individual participants, including for emergency use.")
+    intermediate: bool | None = Field(default=None, description="For intermediate-size participant populations.")
+    treatment: bool | None = Field(default=None,
+                                   description="Under a treatment IND or treatment protocol for a large, widespread population.")
 
 
 class PatientRegistry(str, Enum):
     """Indicates whether the observational study is a patient registry."""
     YES = "YES"
     NO = "NO"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            value_lower = value.strip().lower()
+            if value_lower in {"yes", "true"}:
+                return cls.YES
+            if value_lower in {"no", "false"}:
+                return cls.NO
+        if isinstance(value, bool):
+            return cls.YES if value else cls.NO
+        return None
 
 
 class Phase(str, Enum):
@@ -52,12 +68,12 @@ class PrimaryPurpose(str, Enum):
     TREATMENT = "TREATMENT"
     PREVENTION = "PREVENTION"
     DIAGNOSTIC = "DIAGNOSTIC"
+    ECT = "ECT"
     SUPPORTIVE_CARE = "SUPPORTIVE_CARE"
     SCREENING = "SCREENING"
     HEALTH_SERVICES_RESEARCH = "HEALTH_SERVICES_RESEARCH"
     BASIC_SCIENCE = "BASIC_SCIENCE"
     DEVICE_FEASIBILITY = "DEVICE_FEASIBILITY"
-    EDUCATIONAL_COUNSELING_TRAINING = "EDUCATIONAL_COUNSELING_TRAINING"
     OTHER = "OTHER"
 
 
@@ -82,8 +98,8 @@ class InterventionType(str, Enum):
     """The general type of intervention."""
     DRUG = "DRUG"
     DEVICE = "DEVICE"
-    BIOLOGICAL_VACCINE = "BIOLOGICAL_VACCINE"
-    PROCEDURE_SURGERY = "PROCEDURE_SURGERY"
+    BIOLOGICAL = "BIOLOGICAL"
+    PROCEDURE = "PROCEDURE"
     RADIATION = "RADIATION"
     BEHAVIORAL = "BEHAVIORAL"
     GENETIC = "GENETIC"
@@ -117,15 +133,6 @@ class SamplingMethod(str, Enum):
     NON_PROBABILITY_SAMPLE = "NON_PROBABILITY_SAMPLE"
 
 
-class StudyPopulation(str, Enum):
-    """For an observational study, a description of the group of individuals from which the study participant will be selected."""
-    GENERAL_POPULATION_IN_THE_UNITED_STATES = "GENERAL_POPULATION_IN_THE_UNITED_STATES"
-    PATIENTS_WITH_SPECIFIC_CONDITION = "PATIENTS_WITH_SPECIFIC_CONDITION"
-    POPULATION_AT_HIGH_RISK_FOR_CONDITION = "POPULATION_AT_HIGH_RISK_FOR_CONDITION"
-    HEALTH_VOLUNTEERS = "HEALTH_VOLUNTEERS"
-    OTHER_SPECIFIC_POPULATION = "OTHER_SPECIFIC_POPULATION"
-
-
 class Sex(str, Enum):
     """The sex of participants eligible for the clinical study."""
     ALL = "ALL"
@@ -137,6 +144,18 @@ class GenderBased(str, Enum):
     """Indicates if the study is enrolling participants based on their gender identity."""
     YES = "YES"
     NO = "NO"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            value_lower = value.strip().lower()
+            if value_lower in {"yes", "true"}:
+                return cls.YES
+            if value_lower in {"no", "false"}:
+                return cls.NO
+        if isinstance(value, bool):
+            return cls.YES if value else cls.NO
+        return None
 
 
 class Role(str, Enum):
@@ -150,9 +169,11 @@ class AgencyClass(str, Enum):
     """The class of the agency."""
     NIH = "NIH"
     FED = "FED"
+    OTHER_GOV = "OTHER_GOV"
     INDIV = "INDIV"
     INDUSTRY = "INDUSTRY"
     NETWORK = "NETWORK"
+    AMBIG = "AMBIG"
     OTHER = "OTHER"
     UNKNOWN = "UNKNOWN"
 
@@ -173,22 +194,6 @@ class Status(str, Enum):
     APPROVED_FOR_MARKETING = "APPROVED_FOR_MARKETING"
     WITHHELD = "WITHHELD"
     UNKNOWN = "UNKNOWN"
-
-
-class WhyStopped(str, Enum):
-    """Reason why the study was stopped."""
-    ACCRUAL = "ACCRUAL"
-    TRIAL_HALTED = "TRIAL_HALTED"
-    OTHER = "OTHER"
-    SAFETY = "SAFETY"
-    EFFICACY = "EFFICACY"
-    STUDY_OBJECTIVE_MET = "STUDY_OBJECTIVE_MET"
-    BUSINESS_ADMINISTRATIVE = "BUSINESS_ADMINISTRATIVE"
-    LOGISTICS_SUPPLIES = "LOGISTICS_SUPPLIES"
-    INTERIM_ANALYSIS = "INTERIM_ANALYSIS"
-    EXTERNAL_REVIEW = "EXTERNAL_REVIEW"
-    LIMITED_ENROLLMENT = "LIMITED_ENROLLMENT"
-    PANDEMIC = "PANDEMIC"
 
 
 class Certainty(str, Enum):
@@ -305,7 +310,7 @@ class StatusModule(BaseModel):
     overallStatus: Status | None = None
     lastKnownStatus: Status | None = None
     delayedPosting: bool | None = None
-    whyStopped: WhyStopped | None = None
+    whyStopped: str | None = None
     expandedAccessInfo: ExpandedAccessInfo | None = None
     startDateStruct: DateStruct | None = None
     primaryCompletionDateStruct: DateStruct | None = None
@@ -351,7 +356,7 @@ class DesignModule(BaseModel):
     """A module of a clinical study protocol that includes information about the design of the study."""
     studyType: StudyType | None = None
     nPtrsToThisExpAccNctId: int | None = None
-    expandedAccessTypes: list[ExpandedAccessType] = Field(default_factory=list)
+    expandedAccessTypes: ExpandedAccessTypes | None = None
     patientRegistry: PatientRegistry | None = None
     targetDuration: str | None = None
     phases: list[Phase] = Field(default_factory=list)
@@ -383,7 +388,7 @@ class EligibilityModule(BaseModel):
     minimumAge: str | None = None
     maximumAge: str | None = None
     stdAges: list[str] = Field(default_factory=list)
-    studyPopulation: StudyPopulation | None = None
+    studyPopulation: str | None = None
     samplingMethod: SamplingMethod | None = None
 
 
@@ -460,6 +465,31 @@ class AdverseEventsModule(BaseModel):
     eventGroups: list[EventGroup] = Field(default_factory=list)
     seriousEvents: list[Event] = Field(default_factory=list)
     otherEvents: list[Event] = Field(default_factory=list)
+
+    @field_validator('frequencyThreshold', mode='before')
+    def clean_frequency_threshold(cls, v: Any) -> float | None:
+        """
+        Custom validator to handle non-numeric strings and comma-formatted numbers
+        before standard validation runs.
+        """
+        if v is None or isinstance(v, (int, float)):
+            return v
+
+        if isinstance(v, str):
+            cleaned_str = v.strip().lower()
+
+            if cleaned_str == 'any':
+                return None
+
+            if ',' in cleaned_str:
+                cleaned_str = cleaned_str.replace(',', '.')
+
+            try:
+                return float(cleaned_str)
+            except ValueError:
+                raise ValueError(f"Could not parse '{v}' as a valid number.")
+
+        raise ValueError(f"Unexpected type for frequencyThreshold: {type(v)}")
 
 
 class MoreInfoModule(BaseModel):
