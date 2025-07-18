@@ -1,18 +1,18 @@
-import os.path
-
-from aidose.ctgov import CTGOV_API_DOWNLOAD_BASE_URL
-from typing import List, Dict
-
 import requests
+import zipfile
 import time
 import json
+import os
+
+from typing import List, Dict
 
 PAGE_SIZE = 1000
 SLEEP_BETWEEN_PAGES = 0.1
 
 
-def fetch_all_study_nctids_from_request() -> List[str]:
+def fetch_all_study_nctids_from_request(ctgov_api_download_base_url: str) -> List[str]:
     # Conforming to the guidelines in https://clinicaltrials.gov/data-api/api
+    print("Fetching all available NCTID's from CTGOV API...")
     nct_ids: List[str] = []
     page_token = None
 
@@ -25,7 +25,7 @@ def fetch_all_study_nctids_from_request() -> List[str]:
         if page_token:
             params["pageToken"] = page_token
 
-        response = requests.get(f"{CTGOV_API_DOWNLOAD_BASE_URL}/studies", params=params)
+        response = requests.get(f"{ctgov_api_download_base_url}/studies", params=params)
         response.raise_for_status()
         data = response.json()
 
@@ -42,8 +42,8 @@ def fetch_all_study_nctids_from_request() -> List[str]:
     return sorted(nct_ids)
 
 
-def fetch_study_json_by_nctid_from_request(nct_id: str) -> Dict:
-    response = requests.get(f"{CTGOV_API_DOWNLOAD_BASE_URL}/studies/{nct_id}", params={"format": "json"})
+def fetch_study_json_by_nctid_from_request(nct_id: str, ctgov_api_download_base_url: str) -> Dict:
+    response = requests.get(f"{ctgov_api_download_base_url}/studies/{nct_id}", params={"format": "json"})
     if response.status_code == 404:
         raise RuntimeError(f"NOT FOUND: {nct_id}")
     response.raise_for_status()
@@ -55,3 +55,26 @@ def fetch_study_json_by_nctid_from_request(nct_id: str) -> Dict:
 def save_study_dict_as_json(nctid: str, study_json: Dict, dir_path: str) -> None:
     with open(os.path.join(dir_path, "{}.json".format(nctid)), "w") as f:
         json.dump(study_json, f, indent=2)
+
+
+def download_all_studies_as_zip(target_zip_file_path: str, ctgov_api_download_base_url: str) -> None:
+    url = f"{ctgov_api_download_base_url}/studies/download?format=json.zip"
+
+    print(f"Downloading: {url}")
+    response = requests.get(url, stream=True)
+    response.raise_for_status()
+
+    with open(target_zip_file_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+        print(f"Downloaded {os.path.split(target_zip_file_path)[-1]} to {os.path.dirname(target_zip_file_path)}")
+
+
+def unzip_and_delete_zip_file(zip_file_path: str, target_dir: str) -> None:
+    os.makedirs(target_dir, exist_ok=False)
+    with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
+        zip_ref.extractall(target_dir)
+
+    os.remove(zip_file_path)
+    print(f"The source zip file {zip_file_path} was extracted to {target_dir} and then deleted.")
