@@ -1,6 +1,6 @@
 """
-This peace of code was initially automatically generated using Gemini 2.5 Pro, refined using ChatGPT o3 with some human
-interventions.
+This peace of code was initially automatically generated using Gemini 2.5 Pro, refined using ChatGPT o3 and was modified
+with some human interventions.
 
 The idea was to reflect the data structures defined in https://clinicaltrials.gov/data-api/about-api/study-data-structure
 into python's stdlib Enum's and dataclass instances, so that typical type-related errors in parsing of the data from
