@@ -1,3 +1,4 @@
+from aidose.ctgov.structures import StrEnumWithNumeric
 from aidose.ctgov.structures import Study
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 import aidose.ctgov.api_download as api_download
@@ -8,6 +9,29 @@ from pydantic import ValidationError
 import os
 import json
 from typing import List
+
+
+class SampleEnum(StrEnumWithNumeric):
+    FOO = (0, "FOO")
+    BAR = (1, "BAR")
+
+
+class StrEnumWithNumericTest(unittest.TestCase):
+    def test_string_value(self):
+        self.assertEqual(str(SampleEnum.FOO), "FOO")
+        self.assertEqual(str(SampleEnum.BAR), "BAR")
+
+    def test_numeric_value(self):
+        self.assertEqual(int(SampleEnum.FOO), 0)
+        self.assertEqual(int(SampleEnum.BAR), 1)
+
+    def test_value_property(self):
+        self.assertEqual(SampleEnum.FOO.value, "FOO")
+        self.assertEqual(SampleEnum.BAR.value, "BAR")
+
+    def test_numeric_property(self):
+        self.assertEqual(SampleEnum.FOO.numeric, 0)
+        self.assertEqual(SampleEnum.BAR.numeric, 1)
 
 
 class CTGOVEntireRegistryParsingAsStudyObjectsIntegrationTest(unittest.TestCase):

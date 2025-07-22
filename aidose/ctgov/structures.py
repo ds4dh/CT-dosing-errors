@@ -1,6 +1,6 @@
 """
 This peace of code was initially automatically generated using Gemini 2.5 Pro, refined using ChatGPT o3 and was modified
-with some human interventions.
+and extended with some human interventions.
 
 The idea was to reflect the data structures defined in https://clinicaltrials.gov/data-api/about-api/study-data-structure
 into python's stdlib Enum's and dataclass instances, so that typical type-related errors in parsing of the data from
@@ -17,31 +17,32 @@ from typing import Any
 #  Enums
 # ==============================================================================
 
-class StudyType(str, Enum):
-    """The nature of the investigation or investigational use of a product, as defined by the study sponsor."""
-    INTERVENTIONAL = "INTERVENTIONAL"
-    OBSERVATIONAL = "OBSERVATIONAL"
-    EXPANDED_ACCESS = "EXPANDED_ACCESS"
+class StrEnumWithNumeric(str, Enum):
+    def __new__(cls, numeric: int, label: str):
+        obj = str.__new__(cls, label)
+        obj._value_ = label
+        obj.numeric = numeric
+        return obj
+
+    def __int__(self) -> int:
+        return self.numeric
+
+    def __str__(self) -> str:
+        return self.value
 
 
-class ExpandedAccessTypes(BaseModel):
-    """
-    The type(s) of expanded access available, represented as a set of boolean flags.
-    """
-    individual: bool | None = Field(default=None,
-                                    description="For individual participants, including for emergency use.")
-    intermediate: bool | None = Field(default=None, description="For intermediate-size participant populations.")
-    treatment: bool | None = Field(default=None,
-                                   description="Under a treatment IND or treatment protocol for a large, widespread population.")
+class StudyType(StrEnumWithNumeric):
+    INTERVENTIONAL = (0, "INTERVENTIONAL")
+    OBSERVATIONAL = (1, "OBSERVATIONAL")
+    EXPANDED_ACCESS = (2, "EXPANDED_ACCESS")
 
 
-class PatientRegistry(str, Enum):
-    """Indicates whether the observational study is a patient registry."""
-    YES = "YES"
-    NO = "NO"
+class PatientRegistry(StrEnumWithNumeric):
+    YES = (1, "YES")
+    NO = (0, "NO")
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: Any):
         if isinstance(value, str):
             value_lower = value.strip().lower()
             if value_lower in {"yes", "true"}:
@@ -53,100 +54,90 @@ class PatientRegistry(str, Enum):
         return None
 
 
-class Phase(str, Enum):
-    """For an interventional study, the stage of clinical development of a drug, biologic, or device."""
-    NA = "NA"
-    EARLY_PHASE1 = "EARLY_PHASE1"
-    PHASE1 = "PHASE1"
-    PHASE2 = "PHASE2"
-    PHASE3 = "PHASE3"
-    PHASE4 = "PHASE4"
+class Phase(StrEnumWithNumeric):
+    NA = (0, "NA")
+    EARLY_PHASE1 = (1, "EARLY_PHASE1")
+    PHASE1 = (2, "PHASE1")
+    PHASE2 = (3, "PHASE2")
+    PHASE3 = (4, "PHASE3")
+    PHASE4 = (5, "PHASE4")
 
 
-class PrimaryPurpose(str, Enum):
-    """The main reason for the clinical study."""
-    TREATMENT = "TREATMENT"
-    PREVENTION = "PREVENTION"
-    DIAGNOSTIC = "DIAGNOSTIC"
-    ECT = "ECT"
-    SUPPORTIVE_CARE = "SUPPORTIVE_CARE"
-    SCREENING = "SCREENING"
-    HEALTH_SERVICES_RESEARCH = "HEALTH_SERVICES_RESEARCH"
-    BASIC_SCIENCE = "BASIC_SCIENCE"
-    DEVICE_FEASIBILITY = "DEVICE_FEASIBILITY"
-    OTHER = "OTHER"
+class PrimaryPurpose(StrEnumWithNumeric):
+    TREATMENT = (0, "TREATMENT")
+    PREVENTION = (1, "PREVENTION")
+    DIAGNOSTIC = (2, "DIAGNOSTIC")
+    ECT = (3, "ECT")
+    SUPPORTIVE_CARE = (4, "SUPPORTIVE_CARE")
+    SCREENING = (5, "SCREENING")
+    HEALTH_SERVICES_RESEARCH = (6, "HEALTH_SERVICES_RESEARCH")
+    BASIC_SCIENCE = (7, "BASIC_SCIENCE")
+    DEVICE_FEASIBILITY = (8, "DEVICE_FEASIBILITY")
+    OTHER = (9, "OTHER")
 
 
-class Masking(str, Enum):
-    """The party or parties, if any, involved in the clinical study who are prevented from having knowledge of the interventions assigned to individual participants."""
-    NONE = "NONE"
-    SINGLE = "SINGLE"
-    DOUBLE = "DOUBLE"
-    TRIPLE = "TRIPLE"
-    QUADRUPLE = "QUADRUPLE"
+class Masking(StrEnumWithNumeric):
+    NONE = (0, "NONE")
+    SINGLE = (1, "SINGLE")
+    DOUBLE = (2, "DOUBLE")
+    TRIPLE = (3, "TRIPLE")
+    QUADRUPLE = (4, "QUADRUPLE")
 
 
-class WhoMasked(str, Enum):
-    """The party or parties blinded to the intervention assignment."""
-    PARTICIPANT = "PARTICIPANT"
-    CARE_PROVIDER = "CARE_PROVIDER"
-    INVESTIGATOR = "INVESTIGATOR"
-    OUTCOMES_ASSESSOR = "OUTCOMES_ASSESSOR"
+class WhoMasked(StrEnumWithNumeric):
+    PARTICIPANT = (0, "PARTICIPANT")
+    CARE_PROVIDER = (1, "CARE_PROVIDER")
+    INVESTIGATOR = (2, "INVESTIGATOR")
+    OUTCOMES_ASSESSOR = (3, "OUTCOMES_ASSESSOR")
 
 
-class InterventionType(str, Enum):
-    """The general type of intervention."""
-    DRUG = "DRUG"
-    DEVICE = "DEVICE"
-    BIOLOGICAL = "BIOLOGICAL"
-    PROCEDURE = "PROCEDURE"
-    RADIATION = "RADIATION"
-    BEHAVIORAL = "BEHAVIORAL"
-    GENETIC = "GENETIC"
-    DIETARY_SUPPLEMENT = "DIETARY_SUPPLEMENT"
-    COMBINATION_PRODUCT = "COMBINATION_PRODUCT"
-    DIAGNOSTIC_TEST = "DIAGNOSTIC_TEST"
-    OTHER = "OTHER"
+class InterventionType(StrEnumWithNumeric):
+    DRUG = (0, "DRUG")
+    DEVICE = (1, "DEVICE")
+    BIOLOGICAL = (2, "BIOLOGICAL")
+    PROCEDURE = (3, "PROCEDURE")
+    RADIATION = (4, "RADIATION")
+    BEHAVIORAL = (5, "BEHAVIORAL")
+    GENETIC = (6, "GENETIC")
+    DIETARY_SUPPLEMENT = (7, "DIETARY_SUPPLEMENT")
+    COMBINATION_PRODUCT = (8, "COMBINATION_PRODUCT")
+    DIAGNOSTIC_TEST = (9, "DIAGNOSTIC_TEST")
+    OTHER = (10, "OTHER")
 
 
-class ArmGroupType(str, Enum):
-    """The role of the arm group in the clinical study."""
-    EXPERIMENTAL = "EXPERIMENTAL"
-    ACTIVE_COMPARATOR = "ACTIVE_COMPARATOR"
-    PLACEBO_COMPARATOR = "PLACEBO_COMPARATOR"
-    SHAM_COMPARATOR = "SHAM_COMPARATOR"
-    NO_INTERVENTION = "NO_INTERVENTION"
-    OTHER = "OTHER"
+class ArmGroupType(StrEnumWithNumeric):
+    EXPERIMENTAL = (0, "EXPERIMENTAL")
+    ACTIVE_COMPARATOR = (1, "ACTIVE_COMPARATOR")
+    PLACEBO_COMPARATOR = (2, "PLACEBO_COMPARATOR")
+    SHAM_COMPARATOR = (3, "SHAM_COMPARATOR")
+    NO_INTERVENTION = (4, "NO_INTERVENTION")
+    OTHER = (5, "OTHER")
 
 
-class MeasureType(str, Enum):
-    """The type of outcome measure."""
-    PRIMARY = "PRIMARY"
-    SECONDARY = "SECONDARY"
-    OTHER_PRE_SPECIFIED = "OTHER_PRE_SPECIFIED"
-    POST_HOC = "POST_HOC"
+class MeasureType(StrEnumWithNumeric):
+    PRIMARY = (0, "PRIMARY")
+    SECONDARY = (1, "SECONDARY")
+    OTHER_PRE_SPECIFIED = (2, "OTHER_PRE_SPECIFIED")
+    POST_HOC = (3, "POST_HOC")
 
 
-class SamplingMethod(str, Enum):
-    """For an observational study, the method used to identify the study population."""
-    PROBABILITY_SAMPLE = "PROBABILITY_SAMPLE"
-    NON_PROBABILITY_SAMPLE = "NON_PROBABILITY_SAMPLE"
+class SamplingMethod(StrEnumWithNumeric):
+    PROBABILITY_SAMPLE = (0, "PROBABILITY_SAMPLE")
+    NON_PROBABILITY_SAMPLE = (1, "NON_PROBABILITY_SAMPLE")
 
 
-class Sex(str, Enum):
-    """The sex of participants eligible for the clinical study."""
-    ALL = "ALL"
-    FEMALE = "FEMALE"
-    MALE = "MALE"
+class Sex(StrEnumWithNumeric):
+    ALL = (0, "ALL")
+    FEMALE = (1, "FEMALE")
+    MALE = (2, "MALE")
 
 
-class GenderBased(str, Enum):
-    """Indicates if the study is enrolling participants based on their gender identity."""
-    YES = "YES"
-    NO = "NO"
+class GenderBased(StrEnumWithNumeric):
+    YES = (1, "YES")
+    NO = (0, "NO")
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: Any):
         if isinstance(value, str):
             value_lower = value.strip().lower()
             if value_lower in {"yes", "true"}:
@@ -158,122 +149,117 @@ class GenderBased(str, Enum):
         return None
 
 
-class Role(str, Enum):
-    """The role of the responsible party in the clinical study."""
-    SPONSOR = "SPONSOR"
-    PRINCIPAL_INVESTIGATOR = "PRINCIPAL_INVESTIGATOR"
-    SPONSOR_INVESTIGATOR = "SPONSOR_INVESTIGATOR"
+class Role(StrEnumWithNumeric):
+    SPONSOR = (0, "SPONSOR")
+    PRINCIPAL_INVESTIGATOR = (1, "PRINCIPAL_INVESTIGATOR")
+    SPONSOR_INVESTIGATOR = (2, "SPONSOR_INVESTIGATOR")
 
 
-class AgencyClass(str, Enum):
-    """The class of the agency."""
-    NIH = "NIH"
-    FED = "FED"
-    OTHER_GOV = "OTHER_GOV"
-    INDIV = "INDIV"
-    INDUSTRY = "INDUSTRY"
-    NETWORK = "NETWORK"
-    AMBIG = "AMBIG"
-    OTHER = "OTHER"
-    UNKNOWN = "UNKNOWN"
+class AgencyClass(StrEnumWithNumeric):
+    NIH = (0, "NIH")
+    FED = (1, "FED")
+    OTHER_GOV = (2, "OTHER_GOV")
+    INDIV = (3, "INDIV")
+    INDUSTRY = (4, "INDUSTRY")
+    NETWORK = (5, "NETWORK")
+    AMBIG = (6, "AMBIG")
+    OTHER = (7, "OTHER")
+    UNKNOWN = (8, "UNKNOWN")
 
 
-class Status(str, Enum):
-    """The recruitment status of a clinical study."""
-    ACTIVE_NOT_RECRUITING = "ACTIVE_NOT_RECRUITING"
-    COMPLETED = "COMPLETED"
-    ENROLLING_BY_INVITATION = "ENROLLING_BY_INVITATION"
-    NOT_YET_RECRUITING = "NOT_YET_RECRUITING"
-    RECRUITING = "RECRUITING"
-    SUSPENDED = "SUSPENDED"
-    TERMINATED = "TERMINATED"
-    WITHDRAWN = "WITHDRAWN"
-    AVAILABLE = "AVAILABLE"
-    NO_LONGER_AVAILABLE = "NO_LONGER_AVAILABLE"
-    TEMPORARILY_NOT_AVAILABLE = "TEMPORARILY_NOT_AVAILABLE"
-    APPROVED_FOR_MARKETING = "APPROVED_FOR_MARKETING"
-    WITHHELD = "WITHHELD"
-    UNKNOWN = "UNKNOWN"
+class Status(StrEnumWithNumeric):
+    ACTIVE_NOT_RECRUITING = (0, "ACTIVE_NOT_RECRUITING")
+    COMPLETED = (1, "COMPLETED")
+    ENROLLING_BY_INVITATION = (2, "ENROLLING_BY_INVITATION")
+    NOT_YET_RECRUITING = (3, "NOT_YET_RECRUITING")
+    RECRUITING = (4, "RECRUITING")
+    SUSPENDED = (5, "SUSPENDED")
+    TERMINATED = (6, "TERMINATED")
+    WITHDRAWN = (7, "WITHDRAWN")
+    AVAILABLE = (8, "AVAILABLE")
+    NO_LONGER_AVAILABLE = (9, "NO_LONGER_AVAILABLE")
+    TEMPORARILY_NOT_AVAILABLE = (10, "TEMPORARILY_NOT_AVAILABLE")
+    APPROVED_FOR_MARKETING = (11, "APPROVED_FOR_MARKETING")
+    WITHHELD = (12, "WITHHELD")
+    UNKNOWN = (13, "UNKNOWN")
 
 
-class Certainty(str, Enum):
-    """A rating of the certainty of the evidence."""
-    VERY_LOW = "VERY_LOW"
-    LOW = "LOW"
-    MODERATE = "MODERATE"
-    HIGH = "HIGH"
-    NO_ESTIMATE = "NO_ESTIMATE"
+class Certainty(StrEnumWithNumeric):
+    VERY_LOW = (0, "VERY_LOW")
+    LOW = (1, "LOW")
+    MODERATE = (2, "MODERATE")
+    HIGH = (3, "HIGH")
+    NO_ESTIMATE = (4, "NO_ESTIMATE")
 
 
-class Direction(str, Enum):
-    """The direction of the rating."""
-    UP = "UP"
-    DOWN = "DOWN"
-    UP_OR_DOWN = "UP_OR_DOWN"
-    NO_CHANGE = "NO_CHANGE"
+class Direction(StrEnumWithNumeric):
+    UP = (0, "UP")
+    DOWN = (1, "DOWN")
+    UP_OR_DOWN = (2, "UP_OR_DOWN")
+    NO_CHANGE = (3, "NO_CHANGE")
 
 
-class GroupCode(str, Enum):
-    """A code that corresponds to the group."""
-    EXP_ARM = "EXP_ARM"
-    COMP_ARM = "COMP_ARM"
-    TOTAL = "TOTAL"
+class GroupCode(StrEnumWithNumeric):
+    EXP_ARM = (0, "EXP_ARM")
+    COMP_ARM = (1, "COMP_ARM")
+    TOTAL = (2, "TOTAL")
 
 
-class Type(str, Enum):
-    """The type of event."""
-    SERIOUS = "SERIOUS"
-    OTHER = "OTHER"
+class Type(StrEnumWithNumeric):
+    SERIOUS = (0, "SERIOUS")
+    OTHER = (1, "OTHER")
 
 
-class PValue(str, Enum):
-    """The type of statistical test."""
-    STUDENT_T_TEST_2_SIDED = "STUDENT_T_TEST_2_SIDED"
-    ANOVA = "ANOVA"
-    CHI_SQUARED = "CHI_SQUARED"
-    CHI_SQUARED_CORRECTION = "CHI_SQUARED_CORRECTION"
-    COCHRAN_MANTEL_HAENSZEL = "COCHRAN_MANTEL_HAENSZEL"
-    FISHER_EXACT = "FISHER_EXACT"
-    KRUSKAL_WALLIS = "KRUSKAL_WALLIS"
-    LOG_RANK = "LOG_RANK"
-    MCNEMAR = "MCNEMAR"
-    WILCOXON_MANN_WHITNEY = "WILCOXON_MANN_WHITNEY"
-    REGRESSION_LINEAR = "REGRESSION_LINEAR"
-    REGRESSION_LOGISTIC = "REGRESSION_LOGISTIC"
-    REGRESSION_COX = "REGRESSION_COX"
+class PValue(StrEnumWithNumeric):
+    STUDENT_T_TEST_2_SIDED = (0, "STUDENT_T_TEST_2_SIDED")
+    ANOVA = (1, "ANOVA")
+    CHI_SQUARED = (2, "CHI_SQUARED")
+    CHI_SQUARED_CORRECTION = (3, "CHI_SQUARED_CORRECTION")
+    COCHRAN_MANTEL_HAENSZEL = (4, "COCHRAN_MANTEL_HAENSZEL")
+    FISHER_EXACT = (5, "FISHER_EXACT")
+    KRUSKAL_WALLIS = (6, "KRUSKAL_WALLIS")
+    LOG_RANK = (7, "LOG_RANK")
+    MCNEMAR = (8, "MCNEMAR")
+    WILCOXON_MANN_WHITNEY = (9, "WILCOXON_MANN_WHITNEY")
+    REGRESSION_LINEAR = (10, "REGRESSION_LINEAR")
+    REGRESSION_LOGISTIC = (11, "REGRESSION_LOGISTIC")
+    REGRESSION_COX = (12, "REGRESSION_COX")
 
 
-class AnnotationType(str, Enum):
-    """The type of annotation."""
-    COMMENT = "COMMENT"
-    PRIMARY_CP = "PRIMARY_CP"
-    SECONDARY_CP = "SECONDARY_CP"
+class AnnotationType(StrEnumWithNumeric):
+    COMMENT = (0, "COMMENT")
+    PRIMARY_CP = (1, "PRIMARY_CP")
+    SECONDARY_CP = (2, "SECONDARY_CP")
 
 
-class UnpostedEventType(str, Enum):
-    """The type of unposted event."""
-    RESET = "RESET"
-    RELEASE = "RELEASE"
-    UNRELEASE = "UNRELEASE"
-    CANCELED = "CANCELED"
+class UnpostedEventType(StrEnumWithNumeric):
+    RESET = (0, "RESET")
+    RELEASE = (1, "RELEASE")
+    UNRELEASE = (2, "UNRELEASE")
+    CANCELED = (3, "CANCELED")
 
 
-class UnpostedAnnotationSource(str, Enum):
-    """The source of an unposted annotation."""
-    NLM = "NLM"
-    SPONSOR = "SPONSOR"
+class UnpostedAnnotationSource(StrEnumWithNumeric):
+    NLM = (0, "NLM")
+    SPONSOR = (1, "SPONSOR")
 
 
-class SubmissionStatus(str, Enum):
-    """The status of the study record submission to PRS."""
-    PENDING = "PENDING"
-    RELEASED = "RELEASED"
-    RESET = "RESET"
+class SubmissionStatus(StrEnumWithNumeric):
+    PENDING = (0, "PENDING")
+    RELEASED = (1, "RELEASED")
+    RESET = (2, "RESET")
 
 
 # ==============================================================================
 #  Pydantic Models
 # ==============================================================================
+
+class ExpandedAccessTypes(BaseModel):
+    individual: bool | None = Field(default=None,
+                                    description="For individual participants, including for emergency use.")
+    intermediate: bool | None = Field(default=None, description="For intermediate-size participant populations.")
+    treatment: bool | None = Field(default=None,
+                                   description="Under a treatment IND or treatment protocol for a large, widespread population.")
 
 
 class OrgStudyIdInfo(BaseModel):
