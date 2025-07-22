@@ -1,20 +1,62 @@
-import os
+from aidose.meddra import MEDDRA_ALL_LEVELS
+
+from enum import Enum
+from dataclasses import dataclass, field
 from typing import Dict, Tuple, List, Set
+import os
 
 
+class MedDRALevel(str, Enum):
+    SOC = "SOC"
+    HLGT = "HLGT"
+    HLT = "HLT"
+    PT = "PT"
+    LLT = "LLT"
+
+    @classmethod
+    def ordered_levels(cls) -> List["MedDRALevel"]:
+        # Defined inside the method to avoid enum-member confusion
+        return [cls.SOC, cls.HLGT, cls.HLT, cls.PT, cls.LLT]
+
+    def parent(self) -> "MedDRALevel":
+        idx = self.ordered_levels().index(self)
+        return self.ordered_levels()[idx - 1] if idx > 0 else self
+
+    def child(self) -> "MedDRALevel":
+        idx = self.ordered_levels().index(self)
+        return self.ordered_levels()[idx + 1] if idx < len(self.ordered_levels()) - 1 else self
+
+    def is_above(self, other: "MedDRALevel") -> bool:
+        return self.ordered_levels().index(self) < self.ordered_levels().index(other)
+
+    def is_below(self, other: "MedDRALevel") -> bool:
+        return self.ordered_levels().index(self) > self.ordered_levels().index(other)
+
+    @classmethod
+    def from_str(cls, value: str) -> "MedDRALevel":
+        for level in cls:
+            if level.name.upper() == value.upper():
+                return level
+        raise ValueError(f"Unknown MedDraLevel: {value}")
+
+    def __str__(self) -> str:
+        return self.value
+
+
+@dataclass
 class Node:
-    def __init__(self, code: str, term: str, level: str) -> None:
-        """Initialize a Node with a code, term, and level.
+    code: str
+    term: str
+    level: MedDRALevel
+    parents: Set["Node"] = field(default_factory=set)
 
-        Args:
-            code (str): The unique identifier for the medical term.
-            term (str): The descriptive name of the medical term.
-            level (str): The hierarchical level of the term in the MedDRA system.
-        """
-        self.code: str = code
-        self.term: str = term
-        self.level: str = level
-        self.parents: Set["Node"] = set()
+    def __hash__(self):
+        return hash((self.code, self.level))
+
+    def __eq__(self, other):
+        if not isinstance(other, Node):
+            return NotImplemented
+        return self.code == other.code and self.level == other.level
 
 
 class MedDRA:
@@ -48,7 +90,7 @@ class MedDRA:
             self.nodes[node2_key].parents.add(self.nodes[node1_key])
 
     def find_paths(
-        self, code: str, level: str, pad_levels: bool = True
+            self, code: str, level: str, pad_levels: bool = True
     ) -> List[List[str]]:
         """Recursively find all paths from the given node to its ancestors.
 
@@ -87,7 +129,7 @@ class MedDRA:
         return paths
 
     def find_node_by_term(
-        self, term: str, levels: Set[str] = None, preprocess=None
+            self, term: str, levels: Set[str] = None, preprocess=None
     ) -> List[Node]:
         """Find all nodes that match the given term within specific levels with optional preprocessing.
 
@@ -119,8 +161,7 @@ class MedDRA:
         Returns:
             int: The index of the level in the MedDRA hierarchy.
         """
-        level_order = ["SOC", "HLGT", "HLT", "PT", "LLT"]
-        return level_order.index(level)
+        return MEDDRA_ALL_LEVELS.index(level)
 
     @staticmethod
     def get_level_by_index(index: int) -> str:
@@ -132,8 +173,7 @@ class MedDRA:
         Returns:
             str: The level name corresponding to the index.
         """
-        level_order = ["SOC", "HLGT", "HLT", "PT", "LLT"]
-        return level_order[index]
+        return MEDDRA_ALL_LEVELS[index]
 
     def load_data(self, path: str) -> None:
         """Load data from files to create nodes and their relationships.
