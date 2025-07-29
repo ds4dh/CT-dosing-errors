@@ -1,5 +1,3 @@
-from aidose.meddra import MEDDRA_ALL_LEVELS
-
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, List, Set, Callable
