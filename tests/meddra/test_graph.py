@@ -62,7 +62,7 @@ class NodeUnitTest(unittest.TestCase):
         self.assertEqual(len(child.parents), 1)
 
 
-class MedDRATestCase(unittest.TestCase):
+class MedDRAUnitTest(unittest.TestCase):
 
     def setUp(self):
         self.graph = MedDRA()
