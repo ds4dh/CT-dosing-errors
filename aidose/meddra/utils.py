@@ -1,5 +1,3 @@
-import argparse
-import os
 from typing import List, Set, Tuple, Dict, TypedDict
 
 from aidose.meddra.graph import MedDRALevel, Node, MedDRA
@@ -117,41 +115,3 @@ def get_descendant_info(
         )
 
     return descendant_info
-
-
-def parse_arguments():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(
-        description=(
-            "Extract union of PT and LLT terms for given HLGT codes from MedDRA, "
-            "and record full SOC-to-term paths as tuples (only complete paths are shown if they exist)."
-        )
-    )
-    parser.add_argument(
-        "--codes",
-        type=str,
-        default="[('HLGT', '10079145'), ('HLGT', '10079159')]",
-        help=(
-            "List of HLGT codes as a string, e.g. "
-            "\"[('HLGT', '10079145'), ('HLGT', '10079159')]\""
-        ),
-    )
-    parser.add_argument(
-        "--data",
-        type=str,
-        default=os.path.join("resources", "MedDRA_27_1_English", "MedAscii"),
-        help="Path to MedDRA data directory",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=os.path.join("resources", "meddra_positive_labels.json"),
-        help="Output JSON file for terms",
-    )
-    parser.add_argument(
-        "--paths-output",
-        type=str,
-        default=os.path.join("resources", "meddra_paths.json"),
-        help="Output JSON file for paths",
-    )
-    return parser.parse_args()
