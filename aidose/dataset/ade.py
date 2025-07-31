@@ -1,7 +1,7 @@
 from aidose.ctgov.structures import Study, Event
 
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Tuple
 from dataclasses import dataclass
 
 
@@ -144,3 +144,88 @@ def aggregate_ade_by_group(study: Study) -> Dict[str, ADEGroupAggregate]:
         )
 
     return aggregated
+
+
+def aggregate_ade_clinical_trial_view(study: Study) -> Tuple[Dict[str, Dict[str, int]], int]:
+    """
+    Aggregates ADE statistics into a unified clinical trial view.
+
+    For each unique ADE term, this function sums the `numAffected` and `numAtRisk` values
+    across all event groups in the study.
+
+    Args:
+        study (Study): A structured Study object containing parsed clinical trial data.
+
+    Returns:
+        Tuple[Dict[str, Dict[str, int]], int]:
+            - A dictionary mapping ADE terms to summed statistics:
+              {
+                "Event Term A": {"numAffected": <total>, "numAtRisk": <total>},
+                ...
+              }
+            - The total population at risk across all event groups.
+    """
+    grouped_ade_data = aggregate_ade_by_group(study)
+
+    clinical_view: Dict[str, Dict[str, int]] = {}
+    total_population = 0
+
+    for group_aggregate in grouped_ade_data.values():
+        total_population += group_aggregate.population
+
+        for ade_term, stats in group_aggregate.events.items():
+            if ade_term not in clinical_view:
+                clinical_view[ade_term] = {"numAffected": 0, "numAtRisk": 0}
+
+            clinical_view[ade_term]["numAffected"] += stats.numAffected
+            clinical_view[ade_term]["numAtRisk"] += stats.numAtRisk
+
+    return clinical_view, total_population
+
+
+def get_positive_ade_terms(event_stats_by_term: Dict[str, ADEEventStats]) -> list[str]:
+    """
+    Returns a list of ADE terms that have a positive number of affected patients.
+
+    Args:
+        event_stats_by_term (Dict[str, ADEEventStats]): Mapping from ADE term to its stats.
+
+    Returns:
+        list[str]: A list of ADE terms with numAffected > 0.
+    """
+    return [
+        term for term, stats in event_stats_by_term.items()
+        if stats.numAffected is not None and stats.numAffected > 0
+    ]
+
+
+def normalize_ade_error_message(msg: str) -> str:
+    """
+    Normalizes an ADE-related error message into a predefined error category.
+
+    Categories include:
+      - "Invalid at-risk numbers"
+      - "Inconsistent at-risk numbers"
+      - "Group ID not in eventGroups"
+      - "Inconsistent numAtRisk"
+      - "Invalid ADE term"
+      - "Other Error"
+
+    Args:
+        msg (str): The original error message.
+
+    Returns:
+        str: A normalized error category.
+    """
+    if "Invalid at-risk numbers" in msg:
+        return "Invalid at-risk numbers"
+    elif "Inconsistent at-risk numbers" in msg:
+        return "Inconsistent at-risk numbers"
+    elif "found in stats but not in eventGroups" in msg:
+        return "Group ID not in eventGroups"
+    elif "Inconsistent numAtRisk" in msg:
+        return "Inconsistent numAtRisk"
+    elif "Invalid ADE term" in msg:
+        return "Invalid ADE term"
+    else:
+        return "Other Error"
