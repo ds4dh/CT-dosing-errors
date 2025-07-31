@@ -1,5 +1,7 @@
 from aidose.ctgov.structures import Study
 
+import re
+
 
 def trial_has_at_least_one_drug_intervention(study: Study) -> bool:
     if not study.protocolSection:
@@ -45,3 +47,42 @@ def include_trial_after_sequential_filtering(study: Study) -> bool:
         return False
 
     return True
+
+
+def sanitize_number_from_string(input_str_with_some_numerical_val: str) -> float | None:
+    """
+    Extracts the first well-formed numeric token from a string and returns it as a float.
+
+    Accepts numbers with:
+        - Optional single leading minus
+        - Digits, commas
+        - One decimal point
+
+    Rejects malformed patterns like:
+        '--1.0.0', '1.2.3', 'value: --12.3'
+
+    Args:
+        input_str_with_some_numerical_val (str): Input string to parse.
+
+    Returns:
+        float | None: Parsed float if valid, else None.
+    """
+    if not isinstance(input_str_with_some_numerical_val, str):
+        raise TypeError("Input must be a string.")
+
+    # Reject clearly malformed patterns in the full string
+    if re.search(r"--|\.\.|(\d\.\d\.\d)", input_str_with_some_numerical_val):
+        return None
+
+    # Look for possible numeric candidates
+    matches = re.findall(r"-?\d[\d,]*\.?\d*", input_str_with_some_numerical_val)
+    for candidate in matches:
+        # Skip empty or obviously malformed entries
+        if candidate.count("-") > 1 or candidate.count(".") > 1:
+            continue
+        try:
+            return float(candidate.replace(",", ""))
+        except ValueError:
+            continue
+
+    return None

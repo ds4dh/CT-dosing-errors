@@ -1,4 +1,5 @@
 from aidose.dataset.utils import include_trial_after_sequential_filtering
+from aidose.dataset.utils import sanitize_number_from_string
 
 from aidose.ctgov.structures import Study
 
@@ -42,3 +43,43 @@ class CTGovSequentialFilteringTest(unittest.TestCase):
         print("Number of excluded trials: {}".format(num_excluded_trials))
 
         self.assertEqual(num_included_trials + num_excluded_trials, len(self.nctids_list))
+
+
+class SanitizeNumberFromStringTestCase(unittest.TestCase):
+
+    def test_valid_integer_string(self):
+        self.assertAlmostEqual(sanitize_number_from_string("1234"), 1234.0)
+
+    def test_valid_integer_with_commas(self):
+        self.assertAlmostEqual(sanitize_number_from_string("1,234"), 1234.0)
+
+    def test_valid_float_string(self):
+        self.assertAlmostEqual(sanitize_number_from_string("56.78"), 56.78)
+
+    def test_valid_float_with_text(self):
+        self.assertAlmostEqual(sanitize_number_from_string("approx. 99.9 patients"), 99.9)
+
+    def test_negative_number(self):
+        self.assertAlmostEqual(sanitize_number_from_string("-42"), -42.0)
+
+    def test_string_with_multiple_numbers(self):
+        self.assertAlmostEqual(sanitize_number_from_string("First: 100, then 200"), 100.0)
+
+    def test_invalid_string(self):
+        self.assertIsNone(sanitize_number_from_string("no numbers here"))
+
+    def test_empty_string(self):
+        self.assertIsNone(sanitize_number_from_string(""))
+
+    def test_invalid_numeric_string(self):
+        self.assertIsNone(sanitize_number_from_string("--1.0.0"))
+
+    def test_invalid_format_with_multiple_dots(self):
+        self.assertIsNone(sanitize_number_from_string("1.2.3"))
+
+    def test_invalid_format_with_multiple_dashes(self):
+        self.assertIsNone(sanitize_number_from_string("value: --12.3"))
+
+
+if __name__ == "__main__":
+    unittest.main()
