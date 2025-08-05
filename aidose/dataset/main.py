@@ -1,3 +1,5 @@
+from aidose.dataset.ade import process_study_for_ade_risks
+from aidose.dataset.meddra import MEDDRA_LABELS_JSON_PATH
 from aidose.dataset.utils import include_trial_after_sequential_filtering
 
 from aidose.ctgov.structures import Study
@@ -33,6 +35,9 @@ def filter_trials_list(ids_list: list[str]) -> list[str]:
 
 
 if __name__ == '__main__':
+    with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
+        meddra_labels = json.load(f).get("terms")
+
     if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and os.path.exists(CTGOV_DATASET_RAW_PATH)):
         api_download.main()
     if not os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH):
@@ -44,3 +49,35 @@ if __name__ == '__main__':
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, 'w') as f:
             for nctid in nctids_list_filtered:
                 f.write(f"{nctid}\n")
+
+    else:
+        with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, "r", encoding="utf-8") as f:
+            nctids_list_filtered = [line.strip() for line in f.readlines()]
+
+    positive_trials = []
+    negative_trials = []
+    errors = {}
+
+    for nctid in tqdm.tqdm(nctids_list_filtered, desc="Getting positive and negative trials..."):
+        file_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            study = Study.model_validate_json(f.read())
+
+        try:
+            result, error = process_study_for_ade_risks(study, meddra_labels)
+
+            if error:
+                errors[error] = errors.get(error, 0) + 1
+            elif result["positive_terms"]:
+                positive_trials.append(result)
+            else:
+                negative_trials.append(result)
+
+        except Exception as e:
+            errors["File Load or Validation"] = errors.get("File Load or Validation", 0) + 1
+            continue
+
+    print(len(positive_trials))
+    print(len(negative_trials))
+    print(errors)
