@@ -86,3 +86,24 @@ def sanitize_number_from_string(input_str_with_some_numerical_val: str) -> float
             continue
 
     return None
+
+
+def has_protocol(study: Study) -> bool:
+    """
+    Checks whether the study includes a protocol document.
+
+    This implementation assumes the structured Study object includes:
+      study.protocolSection.protocolDocumentsModule.hasProtocol: bool
+
+    Args:
+        study (Study): Parsed clinical trial Study object.
+
+    Returns:
+        bool: True if the study includes a protocol document; False otherwise.
+    """
+    try:
+        return bool(
+            study.protocolSection.protocolDocumentsModule.hasProtocol
+        )
+    except AttributeError:
+        return False

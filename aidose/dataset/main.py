@@ -1,6 +1,6 @@
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.meddra import MEDDRA_LABELS_JSON_PATH
-from aidose.dataset.utils import include_trial_after_sequential_filtering
+from aidose.dataset.utils import include_trial_after_sequential_filtering, has_protocol
 
 from aidose.ctgov.structures import Study
 
@@ -81,3 +81,6 @@ if __name__ == '__main__':
     print(len(positive_trials))
     print(len(negative_trials))
     print(errors)
+
+    positive_trials_with_protocol = [study for study in positive_trials if has_protocol(study)]
+    negative_trials_with_protocol = [study for study in negative_trials if has_protocol(study)]
