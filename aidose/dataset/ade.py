@@ -1,8 +1,12 @@
 from aidose.ctgov.structures import Study, Event
 
 from collections import defaultdict
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List, Any
 from dataclasses import dataclass
+
+import os
+import json
+import tqdm
 
 
 @dataclass
@@ -147,6 +151,7 @@ def aggregate_ade_by_group(study: Study) -> Dict[str, ADEGroupAggregate]:
 
 
 def aggregate_ade_clinical_trial_view(study: Study) -> Tuple[Dict[str, Dict[str, int]], int]:
+    # TODO: Refactor this properly.
     """
     Aggregates ADE statistics into a unified clinical trial view.
 
@@ -229,3 +234,29 @@ def normalize_ade_error_message(msg: str) -> str:
         return "Invalid ADE term"
     else:
         return "Other Error"
+
+
+#
+
+def main():
+    # TODO: This is of course circular and only temporary. All API level functions should be moved to main.
+    from aidose.dataset.main import CTGOV_NCTIDS_LIST_FILTERED_PATH, CTGOV_DATASET_RAW_PATH
+    from aidose.dataset.meddra import MEDDRA_LABELS_JSON_PATH
+
+    with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
+        meddra_labels = json.load(f).get("terms")
+
+    with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, "r", encoding="utf-8") as f:
+        nctids = [line.strip() for line in f.readlines()]
+        for nctid in tqdm.tqdm(nctids, desc="Processing trials"):
+            with open(os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json"), "r") as f:
+                study = Study.model_validate_json(f.read())
+
+                group_populations = extract_group_populations(study)
+                clinical_view, total_population = aggregate_ade_clinical_trial_view(study)
+                break  # Just to debug.
+
+
+if __name__ == "__main__":
+    # main_()
+    main()
