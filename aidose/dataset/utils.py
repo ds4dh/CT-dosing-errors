@@ -1,5 +1,8 @@
 from aidose.ctgov.structures import Study
 
+from rapidfuzz import fuzz
+
+from typing import Dict, List, Tuple, Any
 import re
 
 
@@ -107,3 +110,42 @@ def has_protocol(study: Study) -> bool:
         )
     except AttributeError:
         return False
+
+
+def match_terms_fuzzy(
+        candidate_terms: Dict[str, Any],
+        positive_labels: List[str],
+        match_threshold: int = 95,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Performs fuzzy matching between candidate ADE terms and a list of positive MedDRA terms.
+
+    Args:
+        candidate_terms (Dict[str, Any]): Mapping from term → stats (e.g., from clinical view).
+        positive_labels (List[str]): List of MedDRA positive ADE terms.
+        match_threshold (int): Minimum similarity score (0–100) to count as a match.
+
+    Returns:
+        Dict[str, Dict[str, Any]]: Mapping of matched terms to their stats and matched labels:
+            {
+                "headache": {
+                    "stats": {...},
+                    "matches": [{"label": "Headache", "score": 96}]
+                },
+                ...
+            }
+    """
+    normalized_labels = [(label, label.strip().lower()) for label in positive_labels]
+    matched_terms: Dict[str, Dict[str, Any]] = {}
+
+    for term, stats in candidate_terms.items():
+        normalized_term = term.strip().lower()
+        matches = [
+            {"label": orig_label, "score": fuzz.ratio(normalized_term, norm_label)}
+            for orig_label, norm_label in normalized_labels
+            if fuzz.ratio(normalized_term, norm_label) >= match_threshold
+        ]
+        if matches:
+            matched_terms[term] = {"stats": stats, "matches": matches}
+
+    return matched_terms

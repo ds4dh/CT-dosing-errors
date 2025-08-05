@@ -1,6 +1,6 @@
 from aidose.ctgov.structures import Study, Event
 
-from rapidfuzz import fuzz
+from aidose.dataset.utils import match_terms_fuzzy
 
 from collections import defaultdict
 from typing import Dict, Tuple, Any
@@ -257,23 +257,14 @@ def process_study_for_ade_risks(
             - str | None: Normalized error message if failed, otherwise None
     """
     try:
-        # Aggregate ADEs
         grouped = aggregate_ade_by_group(study)
         clinical_view, _ = aggregate_ade_clinical_trial_view(study)
 
-        # Match terms to positive MedDRA labels
-        normalized_labels = [(label, label.strip().lower()) for label in meddra_terms]
-        positive_terms: Dict[str, Any] = {}
-
-        for term, stats in clinical_view.items():
-            normalized_term = term.strip().lower()
-            matches = [
-                {"label": orig_label, "score": fuzz.ratio(normalized_term, norm_label)}
-                for orig_label, norm_label in normalized_labels
-                if fuzz.ratio(normalized_term, norm_label) >= match_threshold
-            ]
-            if matches:
-                positive_terms[term] = {"stats": stats, "matches": matches}
+        positive_terms = match_terms_fuzzy(
+            candidate_terms=clinical_view,
+            positive_labels=meddra_terms,
+            match_threshold=match_threshold,
+        )
 
         return {
             "study": study,
