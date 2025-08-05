@@ -78,9 +78,11 @@ if __name__ == '__main__':
             errors["File Load or Validation"] = errors.get("File Load or Validation", 0) + 1
             continue
 
+    # TODO: What to do with these? Do we save them to a file?
     print(len(positive_trials))
     print(len(negative_trials))
     print(errors)
 
+    # TODO: We don't need this other than for stats, if I correctly understand the original code:
     positive_trials_with_protocol = [study for study in positive_trials if has_protocol(study)]
     negative_trials_with_protocol = [study for study in negative_trials if has_protocol(study)]

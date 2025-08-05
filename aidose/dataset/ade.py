@@ -149,7 +149,8 @@ def aggregate_ade_by_group(study: Study) -> Dict[str, ADEGroupAggregate]:
 
 
 def aggregate_ade_clinical_trial_view(study: Study) -> Tuple[Dict[str, Dict[str, int]], int]:
-    # TODO: Refactor this properly.
+    # TODO: We don't need to return total_population.
+    # TODO: Can this clinical view be simplified/standardized?
     """
     Aggregates ADE statistics into a unified clinical trial view.
 
@@ -203,6 +204,7 @@ def get_positive_ade_terms(event_stats_by_term: Dict[str, ADEEventStats]) -> lis
 
 
 def normalize_ade_error_message(msg: str) -> str:
+    # TODO: Do we really need this?
     """
     Normalizes an ADE-related error message into a predefined error category.
 

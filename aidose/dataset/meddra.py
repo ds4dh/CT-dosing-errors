@@ -18,6 +18,7 @@ MEDDRA_LABELS_CSV_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_posi
 MEDDRA_PATHS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_paths.json")
 MEDDRA_PATHS_CSV_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_paths.csv")
 
+# TODO: This whole script is very bad. Core utilities should be factored out and API's moved to main.py.
 
 def parse_arguments():
     """Parse command-line arguments. Only HLGT codes are configurable."""
