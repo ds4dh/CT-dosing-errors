@@ -1,10 +1,13 @@
 from aidose.dataset.utils import include_trial_after_sequential_filtering
 from aidose.dataset.utils import sanitize_number_from_string
+from aidose.dataset.utils import match_terms_fuzzy
 
 from aidose.ctgov.structures import Study
 
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 import aidose.ctgov.api_download as api_download
+
+from typing import Dict, Any
 
 import unittest
 import os
@@ -79,6 +82,41 @@ class SanitizeNumberFromStringTestCase(unittest.TestCase):
 
     def test_invalid_format_with_multiple_dashes(self):
         self.assertIsNone(sanitize_number_from_string("value: --12.3"))
+
+
+class MatchTermsFuzzyTest(unittest.TestCase):
+    def setUp(self):
+        self.candidate_terms: Dict[str, Dict[str, Any]] = {
+            "headache": {"numAffected": 10, "numAtRisk": 100},
+            "nausea": {"numAffected": 5, "numAtRisk": 100},
+            "fatigue": {"numAffected": 8, "numAtRisk": 100},
+            "blurred vision": {"numAffected": 2, "numAtRisk": 100},
+        }
+        self.positive_labels = ["Headache", "Nausea", "Fever"]
+
+    def test_basic_matching(self):
+        result = match_terms_fuzzy(self.candidate_terms, self.positive_labels, match_threshold=90)
+
+        self.assertIn("headache", result)
+        self.assertIn("nausea", result)
+        self.assertNotIn("fatigue", result)
+        self.assertNotIn("blurred vision", result)
+
+        self.assertGreaterEqual(result["headache"]["matches"][0]["score"], 90)
+        self.assertGreaterEqual(result["nausea"]["matches"][0]["score"], 90)
+
+    def test_no_matches(self):
+        result = match_terms_fuzzy(self.candidate_terms, ["unrelated term"], match_threshold=90)
+        self.assertEqual(result, {})
+
+    def test_low_threshold_captures_more(self):
+        result = match_terms_fuzzy(self.candidate_terms, ["blurry vision"], match_threshold=60)
+        self.assertIn("blurred vision", result)
+
+    def test_exact_match_score(self):
+        result = match_terms_fuzzy({"fever": {"numAffected": 3, "numAtRisk": 80}}, ["Fever"], match_threshold=100)
+        self.assertIn("fever", result)
+        self.assertEqual(result["fever"]["matches"][0]["score"], 100)
 
 
 if __name__ == "__main__":
