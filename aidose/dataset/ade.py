@@ -1,12 +1,10 @@
 from aidose.ctgov.structures import Study, Event
 
-from collections import defaultdict
-from typing import Dict, Tuple, List, Any
-from dataclasses import dataclass
+from rapidfuzz import fuzz
 
-import os
-import json
-import tqdm
+from collections import defaultdict
+from typing import Dict, Tuple, Any
+from dataclasses import dataclass
 
 
 @dataclass
@@ -236,27 +234,53 @@ def normalize_ade_error_message(msg: str) -> str:
         return "Other Error"
 
 
-#
+def process_study_for_ade_risks(
+        study: Study,
+        meddra_terms: list[str],
+        match_threshold: int = 95,
+) -> Tuple[Dict[str, Any], str | None]:
+    """
+    Processes a single Study object to compute ADE aggregates and match positive ADE terms.
 
-def main():
-    # TODO: This is of course circular and only temporary. All API level functions should be moved to main.
-    from aidose.dataset.main import CTGOV_NCTIDS_LIST_FILTERED_PATH, CTGOV_DATASET_RAW_PATH
-    from aidose.dataset.meddra import MEDDRA_LABELS_JSON_PATH
+    Args:
+        study (Study): Parsed Study instance.
+        meddra_terms (list[str]): List of positive MedDRA ADE terms.
+        match_threshold (int): Similarity threshold for fuzzy matching (0–100).
 
-    with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
-        meddra_labels = json.load(f).get("terms")
+    Returns:
+        Tuple:
+            - Dict[str, Any]: A dictionary containing:
+                - 'study': the original Study
+                - 'ade_by_group': dict of group-level ADEs
+                - 'ade_clinical': clinical-trial level ADE view
+                - 'positive_terms': matched ADE terms
+            - str | None: Normalized error message if failed, otherwise None
+    """
+    try:
+        # Aggregate ADEs
+        grouped = aggregate_ade_by_group(study)
+        clinical_view, _ = aggregate_ade_clinical_trial_view(study)
 
-    with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, "r", encoding="utf-8") as f:
-        nctids = [line.strip() for line in f.readlines()]
-        for nctid in tqdm.tqdm(nctids, desc="Processing trials"):
-            with open(os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json"), "r") as f:
-                study = Study.model_validate_json(f.read())
+        # Match terms to positive MedDRA labels
+        normalized_labels = [(label, label.strip().lower()) for label in meddra_terms]
+        positive_terms: Dict[str, Any] = {}
 
-                group_populations = extract_group_populations(study)
-                clinical_view, total_population = aggregate_ade_clinical_trial_view(study)
-                break  # Just to debug.
+        for term, stats in clinical_view.items():
+            normalized_term = term.strip().lower()
+            matches = [
+                {"label": orig_label, "score": fuzz.ratio(normalized_term, norm_label)}
+                for orig_label, norm_label in normalized_labels
+                if fuzz.ratio(normalized_term, norm_label) >= match_threshold
+            ]
+            if matches:
+                positive_terms[term] = {"stats": stats, "matches": matches}
 
+        return {
+            "study": study,
+            "ade_by_group": grouped,
+            "ade_clinical": clinical_view,
+            "positive_terms": positive_terms,
+        }, None
 
-if __name__ == "__main__":
-    # main_()
-    main()
+    except Exception as e:
+        return {}, normalize_ade_error_message(str(e))
