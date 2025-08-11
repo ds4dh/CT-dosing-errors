@@ -1,6 +1,8 @@
-from typing import List, Set, Tuple, Dict, TypedDict
+from typing import List, Set, Tuple, Dict, TypedDict, Iterable
 
 from aidose.meddra.graph import MedDRALevel, Node, MedDRA
+
+import ast
 
 
 class DescendantEntry(TypedDict):
@@ -115,3 +117,42 @@ def get_descendant_info(
         )
 
     return descendant_info
+
+
+def parse_hlgt_codes_literal(codes_literal: str) -> List[Tuple[MedDRALevel, str]]:
+    """
+    Parse a string literal of MedDRA codes into typed (level, code) pairs.
+
+    Example
+    -------
+    >>> parse_hlgt_codes_literal("[('HLGT', '10079145'), ('HLGT', '10079159')]")
+    [(MedDRALevel.HLGT, '10079145'), (MedDRALevel.HLGT, '10079159')]
+
+    Parameters
+    ----------
+    codes_literal : str
+        A Python literal string representing a list of (level, code) tuples.
+
+    Returns
+    -------
+    list[tuple[MedDRALevel, str]]
+        Parsed and typed codes.
+
+    Raises
+    ------
+    ValueError
+        If the literal cannot be parsed or a level is invalid.
+    """
+    try:
+        raw: Iterable[Tuple[str, str]] = ast.literal_eval(codes_literal)
+    except Exception as e:
+        raise ValueError(f"Failed to parse codes literal: {e}") from e
+
+    out: List[Tuple[MedDRALevel, str]] = []
+    for level_str, code in raw:
+        try:
+            lvl = MedDRALevel.from_str(level_str)
+        except Exception as e:
+            raise ValueError(f"Invalid MedDRA level '{level_str}': {e}") from e
+        out.append((lvl, code))
+    return out
