@@ -7,10 +7,15 @@ from aidose.meddra.extraction import build_meddra_descendants
 
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.utils import include_trial_after_sequential_filtering, has_protocol
+from aidose.dataset.labels import term_to_best_label_map_from_positive_terms, canonical_labels_from_positive_terms
+from aidose.dataset.interventions import get_intervention_types
+from aidose.dataset.features import extract_features_for_study, has_protocol, StudyEnrichment
 
+from aidose import RESOURCES_DIR
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 import aidose.ctgov.api_download as api_download
 
+import pandas as pd
 from typing import List
 
 import os
@@ -58,6 +63,7 @@ if __name__ == '__main__':
         with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
             meddra_labels = json.load(f).get("terms")
 
+    # TODO: Ensure the following 2 commented lines are actually redundant:
     # labels_header, labels_rows = meddra_labels_to_csv_rows(meddra_labels)
     # paths_header, paths_rows = meddra_paths_to_csv_rows(result.paths)
 
@@ -116,3 +122,71 @@ if __name__ == '__main__':
     print(f"Positive trials: {len(positive_trials)}")
     print(f"Negative trials: {len(negative_trials)}")
     print(f"Errors: {errors}")
+
+    # -------------------------------------------------
+    # 3) Build global canonical label columns
+    #    (best-match label per term within each positive study)
+    # -------------------------------------------------
+    canonical_label_set: set[str] = set()
+    for item in positive_trials:
+        pos_terms = item.get("positive_terms", {})
+        canonical_label_set.update(canonical_labels_from_positive_terms(pos_terms))
+    canonical_label_cols = sorted(canonical_label_set)
+
+    # -------------------------------------------------
+    # 4) Build global intervention type columns (all studies)
+    # -------------------------------------------------
+    all_intervention_types: set[str] = set()
+    for item in positive_trials + negative_trials:
+        study: Study = item["study"]
+        all_intervention_types.update(get_intervention_types(study))
+    all_intervention_type_cols = sorted(all_intervention_types)
+    # TODO: Remove the above, as this is available under strctures.InterventionType
+
+    # -------------------------------------------------
+    # 5) Feature extraction (per study, using external enrichment)
+    # -------------------------------------------------
+    feature_rows: list[dict] = []
+    for item in tqdm.tqdm(positive_trials + negative_trials, desc="Extracting features"):
+        study: Study = item["study"]
+        enrichment = {
+            "ade_by_group": item.get("ade_by_group", {}),
+            "ade_clinical": item.get("ade_clinical", {}),
+            "positive_terms": item.get("positive_terms", {}),
+        }
+        row = extract_features_for_study(
+            study,
+            canonical_label_cols=canonical_label_cols,
+            all_intervention_type_cols=all_intervention_type_cols,
+            enrichment=enrichment,
+        )
+        feature_rows.append(row)
+
+    features_df = pd.DataFrame(feature_rows)
+
+    # -------------------------------------------------
+    # 6) (Optional) subsets: trials with protocol flag
+    #    NOTE: our has_protocol() expects a Study, not the result dict
+    # -------------------------------------------------
+    positive_trials_with_protocol = [
+        itm for itm in positive_trials if has_protocol(itm["study"])
+    ]
+    negative_trials_with_protocol = [
+        itm for itm in negative_trials if has_protocol(itm["study"])
+    ]
+
+    # -------------------------------------------------
+    # 7) (Optional) Persist artifacts (you can adapt paths)
+    # -------------------------------------------------
+    features_df.to_csv(os.path.join(RESOURCES_DIR, "tabular_dataset.csv"), index=False, encoding="utf-8")
+    # with open("./data/positive_trials.json", "w", encoding="utf-8") as f:
+    #     json.dump(positive_trials, f, ensure_ascii=False)
+    # with open("./data/negative_trials.json", "w", encoding="utf-8") as f:
+    #     json.dump(negative_trials, f, ensure_ascii=False)
+    # with open("./data/errors.json", "w", encoding="utf-8") as f:
+    #     json.dump(errors, f, ensure_ascii=False)
+
+    # Quick visibility (remove later)
+    print("Canonical label columns:", len(canonical_label_cols))
+    print("Intervention type columns:", len(all_intervention_type_cols))
+    print("Feature rows:", len(features_df))

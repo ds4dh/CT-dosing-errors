@@ -267,7 +267,7 @@ def process_study_for_ade_risks(
             positive_labels=meddra_terms,
             match_threshold=match_threshold,
         )
-
+        # TODO: Needs specialized data classes here.
         return {
             "study": study,
             "ade_by_group": grouped,
