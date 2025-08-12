@@ -1,52 +1,75 @@
-from aidose.ctgov.structures import Study, Event
+from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple, Any, Mapping
+
+from aidose.ctgov.structures import Study, Event
 from aidose.dataset.utils import match_terms_fuzzy
 
-from collections import defaultdict
-from typing import Dict, Tuple, Any
-from dataclasses import dataclass
 
+# ------------------------------------------------------------------------------
+# Core stats containers
+# ------------------------------------------------------------------------------
 
 @dataclass
 class ADEEventStats:
-    """
-    Container for statistics related to a specific adverse drug event (ADE) within a group.
-
-    Attributes:
-        numAffected (int): Number of patients affected by the ADE.
-        numAtRisk (int): Number of patients at risk in the group.
-    """
+    """Stats for a specific ADE term within a *single* group."""
     numAffected: int
     numAtRisk: int
 
 
 @dataclass
 class ADEGroupAggregate:
-    """
-    Aggregated ADE statistics for a specific event group.
-
-    Attributes:
-        population (int): Number of patients at risk in the group.
-        events (Dict[str, ADEEventStats]): Mapping from ADE term to its aggregated stats.
-    """
+    """Aggregated ADE stats for a *single* event group."""
     population: int
-    events: Dict[str, ADEEventStats]
+    events: Dict[str, ADEEventStats]  # term -> stats
 
+
+@dataclass(frozen=True)
+class ADEClinicalTermStats:
+    """
+    Trial-level summary for a single ADE term (summed across all groups).
+    """
+    numAffected: int
+    numAtRisk: int
+
+
+@dataclass(frozen=True)
+class LabelMatch:
+    """
+    A fuzzy match between a candidate term and a canonical MedDRA label.
+    """
+    label: str
+    score: int  # 0..100 similarity
+
+
+@dataclass(frozen=True)
+class PositiveTermMatch:
+    """
+    A positive term finding: the ADE term, its clinical stats, and its matched labels.
+    """
+    term: str
+    stats: ADEClinicalTermStats
+    matches: List[LabelMatch]
+
+
+@dataclass
+class ADEAnalysisResultForStudy:
+    """
+    The structured result for a processed study. Keeps everything typed.
+    """
+    ade_by_group: Dict[str, ADEGroupAggregate]  # group_id -> aggregate
+    ade_clinical: Dict[str, ADEClinicalTermStats]  # term -> trial-level stats
+    positive_terms: Dict[str, PositiveTermMatch] = field(default_factory=dict)  # term -> match
+
+
+# ------------------------------------------------------------------------------
+# Computation utilities
+# ------------------------------------------------------------------------------
 
 def extract_group_populations(study: Study) -> Dict[str, int]:
     """
-    Extracts and validates the population size for each event group in the study.
-
-    Ensures that seriousNumAtRisk and otherNumAtRisk are present and consistent.
-
-    Args:
-        study (Study): The clinical trial study object.
-
-    Returns:
-        Dict[str, int]: Mapping from group ID to population size.
-
-    Raises:
-        ValueError: If any group has missing or inconsistent at-risk numbers.
+    Returns per-group population after validating consistency between seriousNumAtRisk and otherNumAtRisk.
     """
     event_groups = study.resultsSection.adverseEventsModule.eventGroups
     group_populations: Dict[str, int] = {}
@@ -69,21 +92,16 @@ def extract_group_populations(study: Study) -> Dict[str, int]:
     return group_populations
 
 
-def process_events_by_group(events: list[Event], group_populations: Dict[str, int]) -> Dict[
-    str, Dict[str, ADEEventStats]]:
+def process_events_by_group(
+        events: List[Event],
+        group_populations: Mapping[str, int],
+) -> Dict[str, Dict[str, ADEEventStats]]:
     """
-    Processes a list of adverse events and aggregates statistics per group.
-
-    Args:
-        events (list[Event]): List of serious or other adverse events.
-        group_populations (Dict[str, int]): Mapping from group ID to population size.
-
-    Returns:
-        Dict[str, Dict[str, ADEEventStats]]: Nested mapping of group ID to event term to statistics.
-
-    Raises:
-        ValueError: For missing ADE terms, unknown group IDs, or inconsistent numAtRisk.
+    Aggregates stats per group for a list of adverse events.
+    Returns: group_id -> (term -> ADEEventStats)
     """
+    from collections import defaultdict
+
     grouped_data: Dict[str, Dict[str, ADEEventStats]] = defaultdict(dict)
 
     for event in events:
@@ -104,7 +122,8 @@ def process_events_by_group(events: list[Event], group_populations: Dict[str, in
 
             if num_at_risk != expected_population:
                 raise ValueError(
-                    f"Inconsistent numAtRisk for group {group_id} in event '{term}': {num_at_risk} != {expected_population}."
+                    f"Inconsistent numAtRisk for group {group_id} in event '{term}': "
+                    f"{num_at_risk} != {expected_population}."
                 )
 
             if num_affected is None:
@@ -122,13 +141,7 @@ def process_events_by_group(events: list[Event], group_populations: Dict[str, in
 
 def aggregate_ade_by_group(study: Study) -> Dict[str, ADEGroupAggregate]:
     """
-    Aggregates adverse drug events (ADEs) by group across serious and other events.
-
-    Args:
-        study (Study): A study object containing the results section.
-
-    Returns:
-        Dict[str, ADEGroupAggregate]: Aggregated ADE data per event group.
+    Aggregates ADEs by group across serious and other events.
     """
     ae_module = study.resultsSection.adverseEventsModule
     group_populations = extract_group_populations(study)
@@ -137,143 +150,124 @@ def aggregate_ade_by_group(study: Study) -> Dict[str, ADEGroupAggregate]:
     other = process_events_by_group(ae_module.otherEvents, group_populations)
 
     aggregated: Dict[str, ADEGroupAggregate] = {}
-
     for group_id, population in group_populations.items():
         all_events = {**serious.get(group_id, {}), **other.get(group_id, {})}
-        aggregated[group_id] = ADEGroupAggregate(
-            population=population,
-            events=all_events
-        )
+        aggregated[group_id] = ADEGroupAggregate(population=population, events=all_events)
 
     return aggregated
 
 
-def aggregate_ade_clinical_trial_view(study: Study) -> Tuple[Dict[str, Dict[str, int]], int]:
-    # TODO: We don't need to return total_population.
-    # TODO: Can this clinical view be simplified/standardized?
+def aggregate_ade_clinical_trial_view(study: Study) -> Dict[str, ADEClinicalTermStats]:
     """
-    Aggregates ADE statistics into a unified clinical trial view.
-
-    For each unique ADE term, this function sums the `numAffected` and `numAtRisk` values
-    across all event groups in the study.
-
-    Args:
-        study (Study): A structured Study object containing parsed clinical trial data.
-
-    Returns:
-        Tuple[Dict[str, Dict[str, int]], int]:
-            - A dictionary mapping ADE terms to summed statistics:
-              {
-                "Event Term A": {"numAffected": <total>, "numAtRisk": <total>},
-                ...
-              }
-            - The total population at risk across all event groups.
+    Sums ADE stats across groups into a trial-level view:
+        term -> ADEClinicalTermStats(numAffected, numAtRisk)
     """
-    grouped_ade_data = aggregate_ade_by_group(study)
+    grouped = aggregate_ade_by_group(study)
+    clinical: Dict[str, ADEClinicalTermStats] = {}
 
-    clinical_view: Dict[str, Dict[str, int]] = {}
-    total_population = 0
+    for group_agg in grouped.values():
+        for term, stats in group_agg.events.items():
+            if term not in clinical:
+                clinical[term] = ADEClinicalTermStats(numAffected=0, numAtRisk=0)
+            # replace with a new instance to keep dataclass frozen semantics clean
+            current = clinical[term]
+            clinical[term] = ADEClinicalTermStats(
+                numAffected=current.numAffected + stats.numAffected,
+                numAtRisk=current.numAtRisk + stats.numAtRisk,
+            )
 
-    for group_aggregate in grouped_ade_data.values():
-        total_population += group_aggregate.population
-
-        for ade_term, stats in group_aggregate.events.items():
-            if ade_term not in clinical_view:
-                clinical_view[ade_term] = {"numAffected": 0, "numAtRisk": 0}
-
-            clinical_view[ade_term]["numAffected"] += stats.numAffected
-            clinical_view[ade_term]["numAtRisk"] += stats.numAtRisk
-
-    return clinical_view, total_population
+    return clinical
 
 
-def get_positive_ade_terms(event_stats_by_term: Dict[str, ADEEventStats]) -> list[str]:
+def get_positive_ade_terms(event_stats_by_term: Mapping[str, ADEClinicalTermStats]) -> List[str]:
     """
-    Returns a list of ADE terms that have a positive number of affected patients.
-
-    Args:
-        event_stats_by_term (Dict[str, ADEEventStats]): Mapping from ADE term to its stats.
-
-    Returns:
-        list[str]: A list of ADE terms with numAffected > 0.
+    Returns ADE terms with a positive number of affected patients.
     """
-    return [
-        term for term, stats in event_stats_by_term.items()
-        if stats.numAffected is not None and stats.numAffected > 0
-    ]
+    return [t for t, s in event_stats_by_term.items() if s.numAffected > 0]
 
 
 def normalize_ade_error_message(msg: str) -> str:
-    # TODO: Do we really need this?
     """
-    Normalizes an ADE-related error message into a predefined error category.
-
-    Categories include:
-      - "Invalid at-risk numbers"
-      - "Inconsistent at-risk numbers"
-      - "Group ID not in eventGroups"
-      - "Inconsistent numAtRisk"
-      - "Invalid ADE term"
-      - "Other Error"
-
-    Args:
-        msg (str): The original error message.
-
-    Returns:
-        str: A normalized error category.
+    Buckets common failure messages into stable categories.
     """
     if "Invalid at-risk numbers" in msg:
         return "Invalid at-risk numbers"
-    elif "Inconsistent at-risk numbers" in msg:
+    if "Inconsistent at-risk numbers" in msg:
         return "Inconsistent at-risk numbers"
-    elif "found in stats but not in eventGroups" in msg:
+    if "found in stats but not in eventGroups" in msg:
         return "Group ID not in eventGroups"
-    elif "Inconsistent numAtRisk" in msg:
+    if "Inconsistent numAtRisk" in msg:
         return "Inconsistent numAtRisk"
-    elif "Invalid ADE term" in msg:
+    if "Invalid ADE term" in msg:
         return "Invalid ADE term"
-    else:
-        return "Other Error"
+    return "Other Error"
+
+
+# ------------------------------------------------------------------------------
+# Study-level processing with typed outputs
+# ------------------------------------------------------------------------------
+
+def _to_positive_term_matches(
+        clinical_view: Mapping[str, ADEClinicalTermStats],
+        fuzzy_output: Dict[str, Dict[str, Any]],
+) -> Dict[str, PositiveTermMatch]:
+    """
+    Adapts the dict returned by match_terms_fuzzy(...) into typed PositiveTermMatch objects.
+    Expects fuzzy_output structure:
+        {
+          "<term>": {
+             "stats": {"numAffected": int, "numAtRisk": int} OR ADEClinicalTermStats,
+             "matches": [{"label": str, "score": int}, ...]
+          },
+          ...
+        }
+    """
+    result: Dict[str, PositiveTermMatch] = {}
+
+    for term, payload in fuzzy_output.items():
+        # Stats may already be ADEClinicalTermStats; otherwise build it.
+        stats_payload = payload.get("stats")
+        if isinstance(stats_payload, ADEClinicalTermStats):
+            stats = stats_payload
+        else:
+            stats = ADEClinicalTermStats(
+                numAffected=int(stats_payload["numAffected"]),
+                numAtRisk=int(stats_payload["numAtRisk"]),
+            )
+
+        matches_raw = payload.get("matches", [])
+        matches = [LabelMatch(label=m["label"], score=int(m["score"])) for m in matches_raw]
+
+        result[term] = PositiveTermMatch(term=term, stats=stats, matches=matches)
+
+    return result
 
 
 def process_study_for_ade_risks(
         study: Study,
-        meddra_terms: list[str],
+        meddra_terms: List[str],
         match_threshold: int = 95,
-) -> Tuple[Dict[str, Any], str | None]:
+) -> Tuple[ADEAnalysisResultForStudy | None, str | None]:
     """
-    Processes a single Study object to compute ADE aggregates and match positive ADE terms.
-
-    Args:
-        study (Study): Parsed Study instance.
-        meddra_terms (list[str]): List of positive MedDRA ADE terms.
-        match_threshold (int): Similarity threshold for fuzzy matching (0–100).
-
-    Returns:
-        Tuple:
-            - Dict[str, Any]: A dictionary containing:
-                - 'study': the original Study
-                - 'ade_by_group': dict of group-level ADEs
-                - 'ade_clinical': clinical-trial level ADE view
-                - 'positive_terms': matched ADE terms
-            - str | None: Normalized error message if failed, otherwise None
+    Computes group-level, trial-level ADE aggregates and fuzzy matches,
+    returning a typed ProcessedStudyResult (or an error category).
     """
     try:
-        grouped = aggregate_ade_by_group(study)
-        clinical_view, _ = aggregate_ade_clinical_trial_view(study)
+        ade_by_group = aggregate_ade_by_group(study)
+        ade_clinical = aggregate_ade_clinical_trial_view(study)
 
-        positive_terms = match_terms_fuzzy(
-            candidate_terms=clinical_view,
-            positive_labels=meddra_terms,
+        fuzzy = match_terms_fuzzy(
+            candidate_terms=ade_clinical,  # term -> ADEClinicalTermStats
+            positive_labels=meddra_terms,  # list[str]
             match_threshold=match_threshold,
         )
-        # TODO: Needs specialized data classes here.
-        return {
-            "study": study,
-            "ade_by_group": grouped,
-            "ade_clinical": clinical_view,
-            "positive_terms": positive_terms,
-        }, None
+        positive_terms = _to_positive_term_matches(ade_clinical, fuzzy)
+
+        return ADEAnalysisResultForStudy(
+            ade_by_group=ade_by_group,
+            ade_clinical=ade_clinical,
+            positive_terms=positive_terms,
+        ), None
 
     except Exception as e:
-        return {}, normalize_ade_error_message(str(e))
+        return None, normalize_ade_error_message(str(e))

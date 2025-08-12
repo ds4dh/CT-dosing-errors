@@ -1,13 +1,19 @@
-from aidose.dataset.ade import aggregate_ade_by_group
-from aidose.dataset.ade import extract_group_populations
-from aidose.dataset.ade import process_events_by_group
-from aidose.dataset.ade import aggregate_ade_clinical_trial_view
-from aidose.dataset.ade import get_positive_ade_terms
-from aidose.dataset.ade import normalize_ade_error_message
-from aidose.dataset.ade import ADEEventStats
-from aidose.ctgov.structures import Study, ResultsSection, AdverseEventsModule, EventGroup, Event, EventStats
-
 import unittest
+
+from aidose.dataset.ade import (
+    ADEGroupAggregate,
+    ADEClinicalTermStats,
+    aggregate_ade_by_group,
+    extract_group_populations,
+    process_events_by_group,
+    aggregate_ade_clinical_trial_view,
+    get_positive_ade_terms,
+    normalize_ade_error_message,
+)
+from aidose.ctgov.structures import (
+    Study, ResultsSection, AdverseEventsModule,
+    EventGroup, Event, EventStats
+)
 
 
 class AdverseEventsAggregationTestCase(unittest.TestCase):
@@ -77,6 +83,7 @@ class AdverseEventsAggregationTestCase(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertIn("EG000", result)
         self.assertEqual(result["EG000"].population, 10)
+        self.assertIsInstance(result["EG000"], ADEGroupAggregate)
 
         events = result["EG000"].events
         self.assertEqual(events["Death"].numAffected, 2)
@@ -124,56 +131,52 @@ class AggregateADEClinicalTrialViewTest(unittest.TestCase):
             )
         )
 
-        result, total_population = aggregate_ade_clinical_trial_view(study)
+        clinical = aggregate_ade_clinical_trial_view(study)
 
-        expected_result = {
-            "Nausea": {"numAffected": 8, "numAtRisk": 30}
-        }
-
-        self.assertEqual(result, expected_result)
-        self.assertEqual(total_population, 30)
+        # Expect typed stats, not raw dicts
+        self.assertIn("Nausea", clinical)
+        self.assertIsInstance(clinical["Nausea"], ADEClinicalTermStats)
+        self.assertEqual(clinical["Nausea"].numAffected, 8)
+        self.assertEqual(clinical["Nausea"].numAtRisk, 30)
 
     def test_empty_events(self):
         study = Study(
             resultsSection=ResultsSection(
                 adverseEventsModule=AdverseEventsModule(
-                    eventGroups=[
-                        EventGroup(id="EG001", seriousNumAtRisk=5, otherNumAtRisk=5),
-                    ],
+                    eventGroups=[EventGroup(id="EG001", seriousNumAtRisk=5, otherNumAtRisk=5)],
                     seriousEvents=[],
                     otherEvents=[]
                 )
             )
         )
 
-        result, total_population = aggregate_ade_clinical_trial_view(study)
+        clinical = aggregate_ade_clinical_trial_view(study)
 
-        self.assertEqual(result, {})
-        self.assertEqual(total_population, 5)
+        self.assertEqual(clinical, {})  # still know population is 5 if needed elsewhere
 
 
 class GetPositiveADETermsTestCase(unittest.TestCase):
     def test_terms_with_positive_num_affected(self):
         data = {
-            "Headache": ADEEventStats(numAffected=5, numAtRisk=100),
-            "Nausea": ADEEventStats(numAffected=0, numAtRisk=100),
-            "Vomiting": ADEEventStats(numAffected=3, numAtRisk=100),
+            "Headache": ADEClinicalTermStats(numAffected=5, numAtRisk=100),
+            "Nausea": ADEClinicalTermStats(numAffected=0, numAtRisk=100),
+            "Vomiting": ADEClinicalTermStats(numAffected=3, numAtRisk=100),
         }
         result = get_positive_ade_terms(data)
         self.assertEqual(set(result), {"Headache", "Vomiting"})
 
-    def test_all_zero_or_none(self):
+    def test_all_zero(self):
         data = {
-            "Dizziness": ADEEventStats(numAffected=0, numAtRisk=100),
-            "Fatigue": ADEEventStats(numAffected=None, numAtRisk=100),
+            "Dizziness": ADEClinicalTermStats(numAffected=0, numAtRisk=100),
+            "Fatigue": ADEClinicalTermStats(numAffected=0, numAtRisk=100),
         }
         result = get_positive_ade_terms(data)
         self.assertEqual(result, [])
 
     def test_all_positive(self):
         data = {
-            "Pain": ADEEventStats(numAffected=1, numAtRisk=50),
-            "Fever": ADEEventStats(numAffected=10, numAtRisk=50),
+            "Pain": ADEClinicalTermStats(numAffected=1, numAtRisk=50),
+            "Fever": ADEClinicalTermStats(numAffected=10, numAtRisk=50),
         }
         result = get_positive_ade_terms(data)
         self.assertEqual(set(result), {"Pain", "Fever"})
@@ -198,7 +201,7 @@ class NormalizeADEErrorMessageTestCase(unittest.TestCase):
             "Inconsistent numAtRisk"
         )
         self.assertEqual(
-            normalize_ade_error_message("Invalid ADE term: term is missing or empty"),
+            normalize_ade_error_message("Invalid ADE term: term is missing or empty."),
             "Invalid ADE term"
         )
 

@@ -6,6 +6,8 @@ from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
 
 from aidose.dataset.ade import process_study_for_ade_risks
+from aidose.dataset.ade import ADEAnalysisResultForStudy
+
 from aidose.dataset.utils import include_trial_after_sequential_filtering, has_protocol
 from aidose.dataset.labels import term_to_best_label_map_from_positive_terms, canonical_labels_from_positive_terms
 from aidose.dataset.interventions import get_intervention_types
@@ -16,7 +18,7 @@ from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW
 import aidose.ctgov.api_download as api_download
 
 import pandas as pd
-from typing import List
+from typing import List, Dict
 
 import os
 import json
@@ -47,8 +49,9 @@ def filter_trials_list(ids_list: list[str]) -> list[str]:
 
 if __name__ == '__main__':
     # -----------------------------
-    # 0) Load MedDRA positive terms
+    # 0) MedDRA positive terms
     # -----------------------------
+    meddra_labels: List[str] = []
     if not os.path.exists(MEDDRA_LABELS_JSON_PATH):
         meddra = MedDRA()
         meddra.load_data(MEDDRA_DATASET_PATH)
@@ -68,11 +71,12 @@ if __name__ == '__main__':
     # paths_header, paths_rows = meddra_paths_to_csv_rows(result.paths)
 
     # -----------------------------------
-    # 1) Ensure dataset exists / is ready
+    # 1) CTGov download and filtering
     # -----------------------------------
     if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and os.path.exists(CTGOV_DATASET_RAW_PATH)):
         api_download.main()
 
+    nctids_list_filtered: List[str] = []
     if not os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH):
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r', encoding='utf-8') as f:
             nctids_list_all = [line.strip() for line in f if line.strip()]
@@ -86,27 +90,21 @@ if __name__ == '__main__':
 
     # -------------------------------------------------
     # 2) Per-study ADE processing + split pos / neg
-    #    result dict structure (by our earlier design):
-    #    {
-    #      "study": Study,
-    #      "ade_by_group": Dict[str, ADEGroupAggregate-like],
-    #      "ade_clinical": Dict[str, {"numAffected": int, "numAtRisk": int}],
-    #      "positive_terms": Dict[str, {"stats": {...}, "matches": [...]}}
-    #    }
+    #    ADEAnalysisResultForStudy:
+    #      - ade_by_group: Dict[str, ADEGroupAggregate]
+    #      - ade_clinical: Dict[str, ADEClinicalTermStats]
+    #      - positive_terms: Dict[str, PositiveTermMatch]  # or {} if none
     # -------------------------------------------------
-    positive_trials: list[dict] = []
-    negative_trials: list[dict] = []
-    errors: dict[str, int] = {}
+
+    positive_trials: List[ADEAnalysisResultForStudy] = []
+    negative_trials: List[ADEAnalysisResultForStudy] = []
+    errors: Dict[str, int] = {}
 
     for nctid in tqdm.tqdm(nctids_list_filtered, desc="ADE matching per study"):
-        file_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+        study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
 
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                study = Study.model_validate_json(f.read())
-        except Exception:
-            errors["File Load or Validation"] = errors.get("File Load or Validation", 0) + 1
-            continue
+        with open(study_path, "r", encoding="utf-8") as f:
+            study = Study.model_validate_json(f.read())
 
         result, error = process_study_for_ade_risks(study, meddra_labels)
 
@@ -114,7 +112,7 @@ if __name__ == '__main__':
             errors[error] = errors.get(error, 0) + 1
             continue
 
-        if result.get("positive_terms"):
+        if result.positive_terms:
             positive_trials.append(result)
         else:
             negative_trials.append(result)
