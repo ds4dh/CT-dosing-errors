@@ -1,66 +1,59 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Any, Mapping
+
+from pydantic import BaseModel, Field, ConfigDict
 
 from aidose.ctgov.structures import Study, Event
 from aidose.dataset.utils import match_terms_fuzzy
 
 
 # ------------------------------------------------------------------------------
-# Core stats containers
+# Core stats containers (Pydantic)
 # ------------------------------------------------------------------------------
 
-@dataclass
-class ADEEventStats:
+class ADEEventStats(BaseModel):
     """Stats for a specific ADE term within a *single* group."""
     numAffected: int
     numAtRisk: int
 
 
-@dataclass
-class ADEGroupAggregate:
+class ADEGroupAggregate(BaseModel):
     """Aggregated ADE stats for a *single* event group."""
     population: int
     events: Dict[str, ADEEventStats]  # term -> stats
 
 
-@dataclass(frozen=True)
-class ADEClinicalTermStats:
-    """
-    Trial-level summary for a single ADE term (summed across all groups).
-    """
+class ADEClinicalTermStats(BaseModel):
+    """Trial-level summary for a single ADE term (summed across all groups)."""
+    model_config = ConfigDict(frozen=True)
     numAffected: int
     numAtRisk: int
 
 
-@dataclass(frozen=True)
-class LabelMatch:
-    """
-    A fuzzy match between a candidate term and a canonical MedDRA label.
-    """
+class LabelMatch(BaseModel):
+    """A fuzzy match between a candidate term and a canonical MedDRA label."""
+    model_config = ConfigDict(frozen=True)
     label: str
     score: int  # 0..100 similarity
 
 
-@dataclass(frozen=True)
-class PositiveTermMatch:
-    """
-    A positive term finding: the ADE term, its clinical stats, and its matched labels.
-    """
+class PositiveTermMatch(BaseModel):
+    """A positive term finding: the ADE term, its clinical stats, and its matched labels."""
+    model_config = ConfigDict(frozen=True)
     term: str
     stats: ADEClinicalTermStats
     matches: List[LabelMatch]
 
 
-@dataclass
-class ADEAnalysisResultForStudy:
+class ADEAnalysisResultForStudy(BaseModel):
     """
-    The structured result for a processed study. Keeps everything typed.
+    The structured result for a processed study. Keeps everything typed and JSON-ready.
     """
+    nctid: str
     ade_by_group: Dict[str, ADEGroupAggregate]  # group_id -> aggregate
     ade_clinical: Dict[str, ADEClinicalTermStats]  # term -> trial-level stats
-    positive_terms: Dict[str, PositiveTermMatch] = field(default_factory=dict)  # term -> match
+    positive_terms: Dict[str, PositiveTermMatch] = Field(default_factory=dict)  # term -> match
 
 
 # ------------------------------------------------------------------------------
@@ -130,6 +123,7 @@ def process_events_by_group(
                 continue
 
             if term in grouped_data[group_id]:
+                # mutate allowed here (this model isn't frozen)
                 grouped_data[group_id][term].numAffected += num_affected
             else:
                 grouped_data[group_id][term] = ADEEventStats(
@@ -169,8 +163,8 @@ def aggregate_ade_clinical_trial_view(study: Study) -> Dict[str, ADEClinicalTerm
         for term, stats in group_agg.events.items():
             if term not in clinical:
                 clinical[term] = ADEClinicalTermStats(numAffected=0, numAtRisk=0)
-            # replace with a new instance to keep dataclass frozen semantics clean
             current = clinical[term]
+            # create a new (frozen) instance with updated totals
             clinical[term] = ADEClinicalTermStats(
                 numAffected=current.numAffected + stats.numAffected,
                 numAtRisk=current.numAtRisk + stats.numAtRisk,
@@ -180,16 +174,12 @@ def aggregate_ade_clinical_trial_view(study: Study) -> Dict[str, ADEClinicalTerm
 
 
 def get_positive_ade_terms(event_stats_by_term: Mapping[str, ADEClinicalTermStats]) -> List[str]:
-    """
-    Returns ADE terms with a positive number of affected patients.
-    """
+    """Returns ADE terms with a positive number of affected patients."""
     return [t for t, s in event_stats_by_term.items() if s.numAffected > 0]
 
 
 def normalize_ade_error_message(msg: str) -> str:
-    """
-    Buckets common failure messages into stable categories.
-    """
+    """Buckets common failure messages into stable categories."""
     if "Invalid at-risk numbers" in msg:
         return "Invalid at-risk numbers"
     if "Inconsistent at-risk numbers" in msg:
@@ -212,8 +202,8 @@ def _to_positive_term_matches(
         fuzzy_output: Dict[str, Dict[str, Any]],
 ) -> Dict[str, PositiveTermMatch]:
     """
-    Adapts the dict returned by match_terms_fuzzy(...) into typed PositiveTermMatch objects.
-    Expects fuzzy_output structure:
+    Adapt match_terms_fuzzy(...) dict into typed PositiveTermMatch models.
+    Expected fuzzy_output:
         {
           "<term>": {
              "stats": {"numAffected": int, "numAtRisk": int} OR ADEClinicalTermStats,
@@ -225,7 +215,6 @@ def _to_positive_term_matches(
     result: Dict[str, PositiveTermMatch] = {}
 
     for term, payload in fuzzy_output.items():
-        # Stats may already be ADEClinicalTermStats; otherwise build it.
         stats_payload = payload.get("stats")
         if isinstance(stats_payload, ADEClinicalTermStats):
             stats = stats_payload
@@ -250,7 +239,7 @@ def process_study_for_ade_risks(
 ) -> Tuple[ADEAnalysisResultForStudy | None, str | None]:
     """
     Computes group-level, trial-level ADE aggregates and fuzzy matches,
-    returning a typed ProcessedStudyResult (or an error category).
+    returning a typed ADEAnalysisResultForStudy (or an error category).
     """
     try:
         ade_by_group = aggregate_ade_by_group(study)
@@ -264,6 +253,7 @@ def process_study_for_ade_risks(
         positive_terms = _to_positive_term_matches(ade_clinical, fuzzy)
 
         return ADEAnalysisResultForStudy(
+            nctid=study.protocolSection.identificationModule.nctId,
             ade_by_group=ade_by_group,
             ade_clinical=ade_clinical,
             positive_terms=positive_terms,

@@ -1,7 +1,9 @@
 import unittest
 
 from aidose.dataset.ade import (
+    ADEAnalysisResultForStudy,
     ADEGroupAggregate,
+    ADEEventStats,
     ADEClinicalTermStats,
     aggregate_ade_by_group,
     extract_group_populations,
@@ -14,6 +16,8 @@ from aidose.ctgov.structures import (
     Study, ResultsSection, AdverseEventsModule,
     EventGroup, Event, EventStats
 )
+
+from pydantic import ValidationError
 
 
 class AdverseEventsAggregationTestCase(unittest.TestCase):
@@ -210,6 +214,92 @@ class NormalizeADEErrorMessageTestCase(unittest.TestCase):
             normalize_ade_error_message("Some unexpected issue occurred."),
             "Other Error"
         )
+
+
+class ADESerializationTestCase(unittest.TestCase):
+    def setUp(self):
+        # Minimal but non-trivial study
+        self.study = Study(
+            resultsSection=ResultsSection(
+                adverseEventsModule=AdverseEventsModule(
+                    eventGroups=[
+                        EventGroup(id="EG000", seriousNumAtRisk=10, otherNumAtRisk=10),
+                        EventGroup(id="EG001", seriousNumAtRisk=20, otherNumAtRisk=20),
+                    ],
+                    seriousEvents=[
+                        Event(
+                            term="Nausea",
+                            stats=[
+                                EventStats(groupId="EG000", numAffected=3, numAtRisk=10),
+                                EventStats(groupId="EG001", numAffected=5, numAtRisk=20),
+                            ],
+                        )
+                    ],
+                    otherEvents=[
+                        Event(
+                            term="Headache",
+                            stats=[
+                                EventStats(groupId="EG000", numAffected=2, numAtRisk=10),
+                                EventStats(groupId="EG001", numAffected=4, numAtRisk=20),
+                            ],
+                        )
+                    ],
+                )
+            )
+        )
+
+    def test_round_trip_json(self):
+        # Build components and compose a result model
+        ade_by_group = aggregate_ade_by_group(self.study)
+        ade_clinical = aggregate_ade_clinical_trial_view(self.study)
+
+        result = ADEAnalysisResultForStudy(
+            nctid="NCT-TEST-000",
+            ade_by_group=ade_by_group,
+            ade_clinical=ade_clinical,
+            # leave positive_terms empty here to avoid depending on fuzzy matching in this test
+        )
+
+        # Serialize -> JSON
+        json_str = result.model_dump_json()
+
+        # Deserialize <- JSON
+        restored = ADEAnalysisResultForStudy.model_validate_json(json_str)
+
+        # Spot-check equality
+        self.assertEqual(restored.nctid, result.nctid)
+        self.assertEqual(set(restored.ade_by_group.keys()), set(result.ade_by_group.keys()))
+        self.assertIn("EG000", restored.ade_by_group)
+        self.assertIn("Nausea", restored.ade_clinical)
+        self.assertEqual(restored.ade_clinical["Nausea"].numAffected, 8)
+        self.assertEqual(restored.ade_clinical["Nausea"].numAtRisk, 30)
+
+        # Ensure nested types survived the round trip
+        self.assertIsInstance(restored.ade_by_group["EG000"], ADEGroupAggregate)
+        self.assertIsInstance(restored.ade_clinical["Nausea"], ADEClinicalTermStats)
+
+    def test_frozen_models_are_immutable(self):
+        stats = ADEClinicalTermStats(numAffected=1, numAtRisk=10)
+        with self.assertRaises((TypeError, ValidationError)):
+            stats.numAffected = 999  # type: ignore[attr-defined]
+
+
+class ADEGroupAggregateSerializationTestCase(unittest.TestCase):
+    def test_group_aggregate_json(self):
+        agg = ADEGroupAggregate(
+            population=15,
+            events={"Dizziness": ADEEventStats(numAffected=2, numAtRisk=15)},
+        )
+
+        payload = agg.model_dump()
+        self.assertEqual(payload["population"], 15)
+        self.assertIn("Dizziness", payload["events"])
+
+        json_str = agg.model_dump_json()
+        restored = ADEGroupAggregate.model_validate_json(json_str)
+        self.assertEqual(restored.population, 15)
+        self.assertEqual(restored.events["Dizziness"].numAffected, 2)
+        self.assertEqual(restored.events["Dizziness"].numAtRisk, 15)
 
 
 if __name__ == "__main__":

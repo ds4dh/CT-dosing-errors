@@ -29,6 +29,8 @@ MEDDRA_LABELS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_pos
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
                                                "ctgov_nctids_list_filtered.txt")
 
+ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
+
 
 def filter_trials_list(ids_list: list[str]) -> list[str]:
     ids_list_filtered: List[str] = []
@@ -57,8 +59,8 @@ if __name__ == '__main__':
         meddra.load_data(MEDDRA_DATASET_PATH)
 
         codes = parse_hlgt_codes_literal("[('HLGT', '10079145'), ('HLGT', '10079159')]")
-        result = build_meddra_descendants(meddra, codes)
-        meddra_labels = sorted(list(result.terms))
+        ade_analysis_result = build_meddra_descendants(meddra, codes)
+        meddra_labels = sorted(list(ade_analysis_result.terms))
         with open(MEDDRA_LABELS_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump({"terms": meddra_labels}, f, ensure_ascii=False, indent=4)
 
@@ -91,6 +93,7 @@ if __name__ == '__main__':
     # -------------------------------------------------
     # 2) Per-study ADE processing + split pos / neg
     #    ADEAnalysisResultForStudy:
+    #      - nctId: str
     #      - ade_by_group: Dict[str, ADEGroupAggregate]
     #      - ade_clinical: Dict[str, ADEClinicalTermStats]
     #      - positive_terms: Dict[str, PositiveTermMatch]  # or {} if none
@@ -98,36 +101,54 @@ if __name__ == '__main__':
 
     positive_trials: List[ADEAnalysisResultForStudy] = []
     negative_trials: List[ADEAnalysisResultForStudy] = []
-    errors: Dict[str, int] = {}
 
-    for nctid in tqdm.tqdm(nctids_list_filtered, desc="ADE matching per study"):
-        study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+    if not os.path.exists(ADE_ANALYSIS_RESULTS_PATH):
 
-        with open(study_path, "r", encoding="utf-8") as f:
-            study = Study.model_validate_json(f.read())
+        normalized_ade_processing_errors: Dict[str, int] = {}
 
-        result, error = process_study_for_ade_risks(study, meddra_labels)
+        for nctid in tqdm.tqdm(nctids_list_filtered, desc="ADE matching per study"):
+            study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+            with open(study_path, "r", encoding="utf-8") as f:
+                study = Study.model_validate_json(f.read())
 
-        if error:
-            errors[error] = errors.get(error, 0) + 1
-            continue
+            ade_analysis_result, ade_error = process_study_for_ade_risks(study, meddra_labels)
 
-        if result.positive_terms:
-            positive_trials.append(result)
-        else:
-            negative_trials.append(result)
+            if ade_error:
+                normalized_ade_processing_errors[ade_error] = normalized_ade_processing_errors.get(ade_error, 0) + 1
+                continue
 
-    print(f"Positive trials: {len(positive_trials)}")
-    print(f"Negative trials: {len(negative_trials)}")
-    print(f"Errors: {errors}")
+            if ade_analysis_result.positive_terms:
+                positive_trials.append(ade_analysis_result)
+            else:
+                negative_trials.append(ade_analysis_result)
+
+        positive_trials.sort(key=lambda x: x.nctid, reverse=False)
+        negative_trials.sort(key=lambda x: x.nctid, reverse=False)
+
+        with open(ADE_ANALYSIS_RESULTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "positive_trials": [item.model_dump() for item in positive_trials],
+                    "negative_trials": [item.model_dump() for item in negative_trials],
+                    "normalized_ade_processing_errors": normalized_ade_processing_errors,
+                },
+                f,
+                indent=2,
+            )
+
+    else:
+        with open(ADE_ANALYSIS_RESULTS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            positive_trials = [ADEAnalysisResultForStudy.model_validate(item) for item in data["positive_trials"]]
+            negative_trials = [ADEAnalysisResultForStudy.model_validate(item) for item in data["negative_trials"]]
 
     # -------------------------------------------------
     # 3) Build global canonical label columns
     #    (best-match label per term within each positive study)
     # -------------------------------------------------
     canonical_label_set: set[str] = set()
-    for item in positive_trials:
-        pos_terms = item.get("positive_terms", {})
+    for ade_result in positive_trials:
+        pos_terms = ade_result.positive_terms
         canonical_label_set.update(canonical_labels_from_positive_terms(pos_terms))
     canonical_label_cols = sorted(canonical_label_set)
 
