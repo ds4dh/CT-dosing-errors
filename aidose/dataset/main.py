@@ -9,7 +9,7 @@ from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.ade import ADEAnalysisResultForStudy
 
 from aidose.dataset.utils import include_trial_after_sequential_filtering, has_protocol
-from aidose.dataset.labels import term_to_best_label_map_from_positive_terms, canonical_labels_from_positive_terms
+from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 from aidose.dataset.interventions import get_intervention_types
 from aidose.dataset.features import extract_features_for_study, has_protocol, StudyEnrichment
 
@@ -147,9 +147,12 @@ if __name__ == '__main__':
     #    (best-match label per term within each positive study)
     # -------------------------------------------------
     canonical_label_set: set[str] = set()
-    for ade_result in positive_trials:
-        pos_terms = ade_result.positive_terms
-        canonical_label_set.update(canonical_labels_from_positive_terms(pos_terms))
+
+    for ade_result in positive_trials:  # List[ADEAnalysisResultForStudy]
+        canonical_label_set.update(
+            canonical_labels_from_positive_terms(ade_result.positive_terms)
+        )
+
     canonical_label_cols = sorted(canonical_label_set)
 
     # -------------------------------------------------
