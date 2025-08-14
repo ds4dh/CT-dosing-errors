@@ -142,3 +142,29 @@ class Feature:
         for member in enum_cls:
             feats.append(Feature(f"{self.name}.{member.name}", counts.get(member, 0), int))
         return feats
+
+
+class FeaturesList(list[Feature]):
+    def expand_enums(self) -> FeaturesList:
+        expanded = FeaturesList()
+        for f in self:
+            if issubclass(f.declared_type, Enum):
+                if isinstance(f.value, list):
+                    expanded.extend(f.as_multi_hot())
+                else:
+                    expanded.extend(f.as_one_hot())
+            else:
+                expanded.append(f)
+        return expanded
+
+    def get_values(self) -> List:
+        """Return a list of all feature values in order."""
+        return [f.value for f in self]
+
+    def get_types(self) -> List[type]:
+        """Return a list of declared types for all features in order."""
+        return [f.declared_type for f in self]
+
+    def get_names(self) -> List[str]:
+        """Return a list of feature names in order."""
+        return [f.name for f in self]
