@@ -1,4 +1,4 @@
-from aidose.ctgov.structures import StrEnumWithNumeric
+from aidose.ctgov.structures import StrEnumWithNumericDeprecated
 from aidose.ctgov.structures import Study
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 import aidose.ctgov.api_download as api_download
@@ -11,7 +11,7 @@ import json
 from typing import List
 
 
-class SampleEnum(StrEnumWithNumeric):
+class SampleEnum(StrEnumWithNumericDeprecated):
     FOO = (0, "FOO")
     BAR = (1, "BAR")
 
