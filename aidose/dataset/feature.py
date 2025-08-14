@@ -76,11 +76,11 @@ class Feature:
                 f"got {type(self.value).__name__}"
             )
 
-    # -------------------- basic cell export --------------------
+    # -------------------- basic exports --------------------
 
-    def to_cell(self) -> Dict[str, Any]:
-        """Return a cell-like dict: {'value': ..., 'type': <type>}"""
-        return {"value": self.value, "type": self.declared_type}
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a full dict including the feature name."""
+        return {"name": self.name, "value": self.value, "type": self.declared_type}
 
     # -------------------- encodings --------------------
 

@@ -23,17 +23,21 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertEqual(f.name, "title")
         self.assertEqual(f.value, "abc")
         self.assertIs(f.declared_type, str)
-        cell = f.to_cell()
-        self.assertEqual(cell["value"], "abc")
-        self.assertIs(cell["type"], str)
+
+        d = f.to_dict()
+        self.assertEqual(d["name"], "title")
+        self.assertEqual(d["value"], "abc")
+        self.assertIs(d["type"], str)
 
     def test_none_allowed(self):
         f = Feature(name="enrollmentCount", value=None, declared_type=int)
         self.assertIsNone(f.value)
         self.assertIs(f.declared_type, int)
-        cell = f.to_cell()
-        self.assertIsNone(cell["value"])
-        self.assertIs(cell["type"], int)
+
+        d = f.to_dict()
+        self.assertEqual(d["name"], "enrollmentCount")
+        self.assertIsNone(d["value"])
+        self.assertIs(d["type"], int)
 
     def test_type_mismatch(self):
         with self.assertRaises(TypeError):
@@ -67,9 +71,10 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertTrue(all(feat.declared_type is bool for feat in feats))
         self.assertEqual([feat.value for feat in feats], [False, True, False])
 
-        cells = [feat.to_cell() for feat in feats]
-        self.assertTrue(all(cell["type"] is bool for cell in cells))
-        self.assertEqual([cell["value"] for cell in cells], [False, True, False])
+        # also sanity-check to_dict for each
+        dicts = [feat.to_dict() for feat in feats]
+        self.assertTrue(all(d["type"] is bool for d in dicts))
+        self.assertEqual([d["value"] for d in dicts], [False, True, False])
 
     def test_enum_one_hot_none_value(self):
         f = Feature(name="phase_raw", value=None, declared_type=Phase)
@@ -124,11 +129,6 @@ class FeatureUnitTest(unittest.TestCase):
 
 
 class FeaturesListUnitTest(unittest.TestCase):
-    @staticmethod
-    def _cells(feats: list[Feature]) -> Dict[str, Dict[str, Any]]:
-        """Helper to view expanded features as name -> {'value', 'type'}"""
-        return {f.name: f.to_cell() for f in feats}
-
     def test_non_enum_feature_passthrough(self):
         f = Feature(name="enrollmentCount", value=123, declared_type=int)
         feats = FeaturesList([f])
@@ -136,7 +136,9 @@ class FeaturesListUnitTest(unittest.TestCase):
 
         self.assertEqual(len(expanded), 1)
         self.assertIs(expanded[0], f)  # same object passthrough
-        self.assertEqual(expanded[0].to_cell(), {"value": 123, "type": int})
+        self.assertEqual(expanded[0].name, "enrollmentCount")
+        self.assertEqual(expanded[0].value, 123)
+        self.assertIs(expanded[0].declared_type, int)
 
     def test_mixed_features(self):
         base = Feature(name="enrollmentCount", value=100, declared_type=int)
@@ -149,22 +151,25 @@ class FeaturesListUnitTest(unittest.TestCase):
         # int stays 1 feature, single enum -> 3, list enum -> 3  ==> total 7
         self.assertEqual(len(expanded), 7)
 
-        cells = self._cells(expanded)
+        # Build a simple lookup
+        cells = {f.name: {"value": f.value, "type": f.declared_type} for f in expanded}
+
         # int feature remains
-        self.assertIn("enrollmentCount", {f.name for f in expanded})
+        self.assertIn("enrollmentCount", cells)
         self.assertEqual(cells["enrollmentCount"]["value"], 100)
         self.assertIs(cells["enrollmentCount"]["type"], int)
 
         # one-hot for Phase
         self.assertEqual(cells["phase.P1"]["value"], True)
-        self.assertEqual(cells["phases.P2"]["value"], 1)  # from multi-hot below it will be int
-        self.assertTrue(cells["phase.P1"]["type"] in (bool, int))  # one-hot bool / multi-hot int coexist by name
+        # from multi-hot list
+        self.assertEqual(cells["phases.P2"]["value"], 1)
+        self.assertIs(cells["phase.P1"]["type"], bool)
 
         # multi-hot increments for the list
-        p2_int_entries = [f for f in expanded if f.name == "phases.P2" and f.declared_type is int]
-        p3_int_entries = [f for f in expanded if f.name == "phases.P3" and f.declared_type is int]
-        self.assertTrue(any(e.value == 1 for e in p2_int_entries))
-        self.assertTrue(any(e.value == 1 for e in p3_int_entries))
+        self.assertEqual(cells["phases.P2"]["value"], 1)
+        self.assertEqual(cells["phases.P3"]["value"], 1)
+        self.assertIs(cells["phases.P2"]["type"], int)
+        self.assertIs(cells["phases.P3"]["type"], int)
 
     def test_getters_on_plain_features(self):
         feats = FeaturesList([
