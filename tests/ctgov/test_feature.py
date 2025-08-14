@@ -50,7 +50,7 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertIs(f.declared_type, Phase)
 
     def test_enum_with_base_declared_type(self):
-        # Previously constructed successfully; now it must fail because declared_type cannot be Enum
+        # Must fail because declared_type cannot be Enum (must be a concrete subclass)
         with self.assertRaises(TypeError):
             Feature(Phase.P3, Enum)
 
@@ -91,9 +91,60 @@ class FeatureUnitTest(unittest.TestCase):
             f.add_to_row_as_one_hot({}, "name")
 
     def test_one_hot_none_requires_enum_subclass_declared_type(self):
-        # Construction fails when declared_type is Enum
+        # Construction fails when declared_type is Enum (not a concrete subclass)
         with self.assertRaises(TypeError):
             Feature(None, Enum)
+
+    # -------- NEW TESTS: multi-hot (list of Enums) --------
+
+    def test_multi_hot_single_enum(self):
+        f = Feature(Phase.P1, Phase)
+        mh = f.to_multi_hot_entries("phase")
+        self.assertEqual(list(mh.keys()), ["phase_P1", "phase_P2", "phase_P3"])
+        self.assertEqual([mh["phase_P1"]["value"], mh["phase_P2"]["value"], mh["phase_P3"]["value"]], [1, 0, 0])
+        self.assertTrue(all(h["type"] is int for h in mh.values()))
+
+    def test_multi_hot_none_value(self):
+        f = Feature(None, Phase)
+        mh = f.to_multi_hot_entries("phase")
+        self.assertEqual(list(mh.keys()), ["phase_P1", "phase_P2", "phase_P3"])
+        self.assertEqual([mh["phase_P1"]["value"], mh["phase_P2"]["value"], mh["phase_P3"]["value"]], [None, None, None])
+        self.assertTrue(all(h["type"] is int for h in mh.values()))
+
+    def test_multi_hot_list_values(self):
+        f = Feature([Phase.P1, Phase.P3], Phase)
+        mh = f.to_multi_hot_entries("phase")
+        self.assertEqual(list(mh.keys()), ["phase_P1", "phase_P2", "phase_P3"])
+        self.assertEqual([mh["phase_P1"]["value"], mh["phase_P2"]["value"], mh["phase_P3"]["value"]], [1, 0, 1])
+
+    def test_multi_hot_list_with_duplicates(self):
+        f = Feature([Phase.P2, Phase.P2, Phase.P3], Phase)
+        mh = f.to_multi_hot_entries("phase")
+        self.assertEqual([mh["phase_P1"]["value"], mh["phase_P2"]["value"], mh["phase_P3"]["value"]], [0, 2, 1])
+
+    def test_add_to_row_as_multi_hot(self):
+        row: Dict[str, Dict] = {}
+        Feature([Phase.P1, Phase.P1, Phase.P3], Phase).add_to_row_as_multi_hot(row, "phase")
+        self.assertIn("phase_P1", row)
+        self.assertIn("phase_P2", row)
+        self.assertIn("phase_P3", row)
+        self.assertEqual(row["phase_P1"]["value"], 2)
+        self.assertEqual(row["phase_P2"]["value"], 0)
+        self.assertEqual(row["phase_P3"]["value"], 1)
+        self.assertIs(row["phase_P3"]["type"], int)
+
+    def test_to_one_hot_rejects_list_value(self):
+        f = Feature([Phase.P1, Phase.P2], Phase)
+        with self.assertRaises(TypeError):
+            f.to_one_hot_entries("phase")
+        with self.assertRaises(TypeError):
+            f.add_to_row_as_one_hot({}, "phase")
+
+    def test_enum_list_type_validation_wrong_member(self):
+        class Other(Enum):
+            X = "x"
+        with self.assertRaises(TypeError):
+            Feature([Phase.P1, Other.X], Phase)  # mixed enum types not allowed
 
 
 if __name__ == "__main__":
