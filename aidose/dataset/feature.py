@@ -1,160 +1,144 @@
-# aidose/dataset/feature.py
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Type, List
+from typing import Any, Dict, List, Type
 
 
 @dataclass(frozen=True)
 class Feature:
     """
-    A typed feature wrapper with strict validation and Enum helpers.
+    A typed feature with a name.
 
     Fields:
-      - value: the feature's value (may be None for "missing").
-      - declared_type: a Python type (e.g., str, int, bool, or a concrete Enum subclass).
+      - name: feature name (arbitrary for scalar features; ignored by encoders)
+      - value: the feature's value (may be None for "missing")
+      - declared_type: a Python type (e.g., str, int, bool, or a concrete Enum subclass)
 
     Validation rules:
       - declared_type must be a type object (never a string), and NOT the Enum base class.
-      - If value is None -> allowed for any declared_type.
-      - If declared_type is bool -> value must be an actual bool (not 0/1).
+      - If value is None: accepted for any declared_type.
+      - If declared_type is bool: only a real bool is accepted (not 0/1).
       - If declared_type is a concrete Enum subclass:
           value may be:
             * a single Enum member of that subclass, or
-            * a list of Enum members of that subclass.
-      - Otherwise -> isinstance(value, declared_type) must be True.
+            * a list of Enum members of that subclass (for multi-hot use).
+      - Otherwise: isinstance(value, declared_type) must be True.
 
-    Enum helpers:
-      - to_one_hot_entries(name): for a single Enum value; if value is None -> all None; if value is a list -> TypeError.
-      - to_multi_hot_entries(name): for a list (or single) Enum value; counts per member; None -> all None.
+    Encoding helpers:
+      - as_one_hot(): for a **single** Enum value -> List[Feature] of bools; None -> all None
+                      names are "<EnumClass>.<MEMBER>"
+      - as_multi_hot(): for a single or list[Enum] -> List[Feature] of ints; None -> all None
+                        names are "<EnumClass>.<MEMBER>"
     """
+    name: str
     value: Any
     declared_type: Type[Any]
 
+    # -------------------- validation --------------------
+
     def __post_init__(self) -> None:
-        # Ensure declared_type is a type
         if not isinstance(self.declared_type, type):
             raise TypeError("declared_type must be a type object (e.g., str, int, bool, or a concrete Enum subclass).")
 
-        # Disallow the Enum base class as declared type
         if self.declared_type is Enum:
             raise TypeError("declared_type must be a concrete Enum subclass, not Enum.")
 
-        # Missing is always allowed
         if self.value is None:
             return
 
-        # Strict bool: exclude ints
         if self.declared_type is bool:
             if type(self.value) is not bool:
-                raise TypeError(f"Feature expects value of type bool, got {type(self.value).__name__}")
+                raise TypeError(f"Feature '{self.name}' expects value of type bool, got {type(self.value).__name__}")
             return
 
-        # Enum family: allow single Enum OR list[Enum]
         if issubclass(self.declared_type, Enum):
-            # Single Enum
+            # single Enum?
             if isinstance(self.value, self.declared_type):
                 return
-            # List of Enum members
+            # list of Enum?
             if isinstance(self.value, list):
                 for i, elem in enumerate(self.value):
                     if not isinstance(elem, self.declared_type):
                         raise TypeError(
-                            f"Element at index {i} is not {self.declared_type.__name__}: got {type(elem).__name__}"
+                            f"Feature '{self.name}' element at index {i} is not {self.declared_type.__name__}: "
+                            f"got {type(elem).__name__}"
                         )
                 return
-            # Otherwise, not acceptable
             raise TypeError(
-                f"Feature expects {self.declared_type.__name__} or list[{self.declared_type.__name__}], "
+                f"Feature '{self.name}' expects {self.declared_type.__name__} or list[{self.declared_type.__name__}], "
                 f"got {type(self.value).__name__}"
             )
 
-        # General case
         if not isinstance(self.value, self.declared_type):
             raise TypeError(
-                f"Feature expects value of type {self.declared_type.__name__}, got {type(self.value).__name__}"
+                f"Feature '{self.name}' expects value of type {self.declared_type.__name__}, "
+                f"got {type(self.value).__name__}"
             )
 
-    # ---------- basic row helpers ----------
+    # -------------------- basic cell export --------------------
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_cell(self) -> Dict[str, Any]:
+        """Return a cell-like dict: {'value': ..., 'type': <type>}"""
         return {"value": self.value, "type": self.declared_type}
 
-    def add_to_row(self, row: Dict[str, Any], name: str) -> None:
-        row[name] = self.to_dict()
+    # -------------------- encodings --------------------
 
-    # ---------- one-hot for single Enum ----------
-
-    def to_one_hot_entries(self, name: str) -> Dict[str, Dict[str, Any]]:
+    def as_one_hot(self) -> List[Feature]:
         """
-        Produce one-hot entries for a **single** Enum value.
-        If value is None -> all entries have value=None.
-        If value is a list -> raise TypeError (use to_multi_hot_entries instead).
+        For **single** Enum value: produce one-hot features of type bool.
+        Names are "<EnumClass>.<MEMBER>".
+
+        If value is None -> all features have value=None (type=bool).
+        If value is a list -> TypeError (use as_multi_hot instead).
         """
         if not (isinstance(self.declared_type, type) and issubclass(self.declared_type, Enum)):
-            raise TypeError("to_one_hot_entries requires declared_type to be a concrete Enum subclass.")
+            raise TypeError("as_one_hot requires declared_type to be a concrete Enum subclass.")
 
         enum_cls = self.declared_type
-        entries: Dict[str, Dict[str, Any]] = {}
 
-        # list -> not allowed here (use multi-hot)
         if isinstance(self.value, list):
-            raise TypeError("to_one_hot_entries is only valid for single Enum value, not a list. Use to_multi_hot_entries.")
+            raise TypeError("as_one_hot is only valid for a single Enum value. Use as_multi_hot for lists.")
 
+        feats: List[Feature] = []
         if self.value is None:
             for member in enum_cls:
-                entries[f"{name}_{member.name}"] = {"value": None, "type": bool}
-            return entries
+                feats.append(Feature(f"{self.name}.{member.name}", None, bool))
+            return feats
 
-        # Single Enum already validated
+        # single Enum (validated in __post_init__)
         for member in enum_cls:
-            entries[f"{name}_{member.name}"] = {"value": (member is self.value), "type": bool}
-        return entries
+            feats.append(Feature(f"{self.name}.{member.name}", member is self.value, bool))
+        return feats
 
-    def add_to_row_as_one_hot(self, row: Dict[str, Any], name: str) -> None:
-        row.update(self.to_one_hot_entries(name))
-
-    # ---------- multi-hot for Enum or list[Enum] ----------
-
-    def to_multi_hot_entries(self, name: str) -> Dict[str, Dict[str, Any]]:
+    def as_multi_hot(self) -> List[Feature]:
         """
-        Produce multi-hot (counts) for Enum or list[Enum] values:
-          { f"{name}_{MEMBER.name}": {"value": int|None, "type": int}, ... }
+        For a single or list[Enum] value: produce multi-hot counts (type=int).
+        Names are "<EnumClass>.<MEMBER>".
 
-        - If value is None -> all counts None.
-        - If value is a single Enum -> the matched member gets count 1, others 0.
-        - If value is a list of Enum -> counts reflect occurrences (duplicates allowed).
+        If value is None -> all features have value=None (type=int).
+        If value is a single Enum -> that member gets 1, others 0.
+        If value is a list -> counts reflect occurrences (duplicates allowed).
         """
         if not (isinstance(self.declared_type, type) and issubclass(self.declared_type, Enum)):
-            raise TypeError("to_multi_hot_entries requires declared_type to be a concrete Enum subclass.")
+            raise TypeError("as_multi_hot requires declared_type to be a concrete Enum subclass.")
 
         enum_cls = self.declared_type
-        entries: Dict[str, Dict[str, Any]] = {}
+        feats: List[Feature] = []
 
         if self.value is None:
             for member in enum_cls:
-                entries[f"{name}_{member.name}"] = {"value": None, "type": int}
-            return entries
+                feats.append(Feature(f"{self.name}.{member.name}", None, int))
+            return feats
 
-        # Single Enum
+        # count occurrences
+        counts: Dict[Enum, int] = {}
         if isinstance(self.value, self.declared_type):
-            for member in enum_cls:
-                entries[f"{name}_{member.name}"] = {"value": 1 if member is self.value else 0, "type": int}
-            return entries
-
-        # List of Enum
-        if isinstance(self.value, list):
-            counts: Dict[Enum, int] = {}
+            counts[self.value] = 1
+        elif isinstance(self.value, list):
             for elem in self.value:
-                # already validated type
                 counts[elem] = counts.get(elem, 0) + 1
-            for member in enum_cls:
-                entries[f"{name}_{member.name}"] = {"value": counts.get(member, 0), "type": int}
-            return entries
 
-        # Should not be reachable due to __post_init__ validation
-        raise TypeError("Invalid enum value state for multi-hot.")
-
-    def add_to_row_as_multi_hot(self, row: Dict[str, Any], name: str) -> None:
-        row.update(self.to_multi_hot_entries(name))
+        for member in enum_cls:
+            feats.append(Feature(f"{self.name}.{member.name}", counts.get(member, 0), int))
+        return feats
