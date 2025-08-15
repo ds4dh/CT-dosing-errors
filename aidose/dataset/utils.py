@@ -1,8 +1,11 @@
 from aidose.ctgov.structures import Study
 
+from aidose.meddra.graph import MedDRALevel
+from aidose.meddra.utils import DescendantEntry
+
 from rapidfuzz import fuzz
 
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Sequence, Iterable
 import re
 
 
@@ -91,27 +94,6 @@ def sanitize_number_from_string(input_str_with_some_numerical_val: str) -> float
     return None
 
 
-def has_protocol(study: Study) -> bool:
-    """
-    Checks whether the study includes a protocol document.
-
-    This implementation assumes the structured Study object includes:
-      study.protocolSection.protocolDocumentsModule.hasProtocol: bool
-
-    Args:
-        study (Study): Parsed clinical trial Study object.
-
-    Returns:
-        bool: True if the study includes a protocol document; False otherwise.
-    """
-    try:
-        return bool(
-            study.protocolSection.protocolDocumentsModule.hasProtocol
-        )
-    except AttributeError:
-        return False
-
-
 def match_terms_fuzzy(
         candidate_terms: Dict[str, Any],
         positive_labels: List[str],
@@ -149,3 +131,83 @@ def match_terms_fuzzy(
             matched_terms[term] = {"stats": stats, "matches": matches}
 
     return matched_terms
+
+
+# TODO: These are unnecessary stuff it seems. I'll just delete them soon:
+def meddra_labels_to_csv_rows(terms: Iterable[str]) -> Tuple[List[str], List[List[str]]]:
+    """
+    Convert a set/iterable of MedDRA terms into CSV-friendly rows (no I/O).
+
+    Returns
+    -------
+    header : list[str]
+        ["term"]
+    rows : list[list[str]]
+        One row per term, sorted.
+    """
+    header = ["term"]
+    rows = [[t] for t in sorted(terms)]
+    return header, rows
+
+
+def format_meddra_path(path: Sequence[Tuple[MedDRALevel | str, str]]) -> str:
+    """
+    Human-friendly formatter for a single MedDRA path:
+        [(LEVEL, CODE), ...] -> "LEVEL: CODE -> LEVEL: CODE -> ..."
+
+    Parameters
+    ----------
+    path : Sequence[tuple[MedDRALevel | str, str]]
+        A path where each step is (level, code). Level may be an enum or str.
+
+    Returns
+    -------
+    str
+        Pretty string representation of the path.
+    """
+    parts: list[str] = []
+    for lvl, code in path:
+        lvl_str = lvl.name if isinstance(lvl, MedDRALevel) else str(lvl)
+        parts.append(f"{lvl_str}: {code}")
+    return " -> ".join(parts)
+
+
+def meddra_paths_to_csv_rows(
+        paths: Dict[str, Dict[str, DescendantEntry]]
+) -> Tuple[List[str], List[List[str]]]:
+    """
+    Convert MedDRA descendant paths to CSV-friendly rows (no I/O).
+
+    Input structure
+    ---------------
+    paths:
+      {
+        "HLGT_CODE@HLGT": {
+           "DESC_CODE@PT":  {"term": str, "paths": [[(lvl, code), ...], ...]},
+           "DESC_CODE@LLT": {...}
+        },
+        ...
+      }
+
+    Returns
+    -------
+    header : list[str]
+        ["HLGT_code", "Descendant_code", "Descendant_term", "Path_index", "Path"]
+    rows : list[list[str]]
+        One row per descendant path. If no paths, an empty index and path string are emitted.
+    """
+    header = ["HLGT_code", "Descendant_code", "Descendant_term", "Path_index", "Path"]
+    rows: list[list[str]] = []
+
+    for hlgt_key, descendants in paths.items():
+        for desc_key, entry in descendants.items():
+            term: str = entry.get("term", "")
+            path_list = entry.get("paths", [])
+
+            if path_list:
+                for i, path in enumerate(path_list, start=1):
+                    rows.append([hlgt_key, desc_key, term, str(i), format_meddra_path(path)])
+            else:
+                rows.append([hlgt_key, desc_key, term, "", ""])
+
+    return header, rows
