@@ -11,6 +11,8 @@ datasets_root_dirs_dict = {
     "sf-macbook-pro.local": "/Users/sssohrab/data/corpora",
 }
 
+# TODO: Clean this mess by using environment variables.
+
 hostname = socket.gethostname().lower()
 if hostname in datasets_root_dirs_dict.keys():
     CORPORA_ROOT_DIR = datasets_root_dirs_dict[hostname]

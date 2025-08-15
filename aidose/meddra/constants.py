@@ -10,5 +10,5 @@ if not os.path.exists(MEDDRA_DATASET_PATH):
         "This requires you to create an account and agree to their terms.".format(
             os.path.dirname(MEDDRA_DATASET_PATH)))
 
-MEDDRA_CREATED_ARTIFACTS_DIR = os.path.join(os.path.dirname(MEDDRA_DATASET_PATH), "created_artifacts")
+MEDDRA_CREATED_ARTIFACTS_DIR = os.path.join(RESOURCES_DIR, "MEDDRA", "created_artifacts")
 os.makedirs(MEDDRA_CREATED_ARTIFACTS_DIR, exist_ok=True)

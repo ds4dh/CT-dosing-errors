@@ -17,7 +17,7 @@ from typing import Any
 #  Enums
 # ==============================================================================
 
-class StrEnumWithNumeric(str, Enum):
+class StrEnumWithNumericDeprecated(str, Enum):
     def __new__(cls, numeric: int, label: str):
         obj = str.__new__(cls, label)
         obj._value_ = label
@@ -31,110 +31,15 @@ class StrEnumWithNumeric(str, Enum):
         return self.value
 
 
-class StudyType(StrEnumWithNumeric):
-    INTERVENTIONAL = (0, "INTERVENTIONAL")
-    OBSERVATIONAL = (1, "OBSERVATIONAL")
-    EXPANDED_ACCESS = (2, "EXPANDED_ACCESS")
+class StudyType(Enum):
+    INTERVENTIONAL = "INTERVENTIONAL"
+    OBSERVATIONAL = "OBSERVATIONAL"
+    EXPANDED_ACCESS = "EXPANDED_ACCESS"
 
 
-class PatientRegistry(StrEnumWithNumeric):
-    YES = (1, "YES")
-    NO = (0, "NO")
-
-    @classmethod
-    def _missing_(cls, value: Any):
-        if isinstance(value, str):
-            value_lower = value.strip().lower()
-            if value_lower in {"yes", "true"}:
-                return cls.YES
-            if value_lower in {"no", "false"}:
-                return cls.NO
-        if isinstance(value, bool):
-            return cls.YES if value else cls.NO
-        return None
-
-
-class Phase(StrEnumWithNumeric):
-    NA = (0, "NA")
-    EARLY_PHASE1 = (1, "EARLY_PHASE1")
-    PHASE1 = (2, "PHASE1")
-    PHASE2 = (3, "PHASE2")
-    PHASE3 = (4, "PHASE3")
-    PHASE4 = (5, "PHASE4")
-
-
-class PrimaryPurpose(StrEnumWithNumeric):
-    TREATMENT = (0, "TREATMENT")
-    PREVENTION = (1, "PREVENTION")
-    DIAGNOSTIC = (2, "DIAGNOSTIC")
-    ECT = (3, "ECT")
-    SUPPORTIVE_CARE = (4, "SUPPORTIVE_CARE")
-    SCREENING = (5, "SCREENING")
-    HEALTH_SERVICES_RESEARCH = (6, "HEALTH_SERVICES_RESEARCH")
-    BASIC_SCIENCE = (7, "BASIC_SCIENCE")
-    DEVICE_FEASIBILITY = (8, "DEVICE_FEASIBILITY")
-    OTHER = (9, "OTHER")
-
-
-class Masking(StrEnumWithNumeric):
-    NONE = (0, "NONE")
-    SINGLE = (1, "SINGLE")
-    DOUBLE = (2, "DOUBLE")
-    TRIPLE = (3, "TRIPLE")
-    QUADRUPLE = (4, "QUADRUPLE")
-
-
-class WhoMasked(StrEnumWithNumeric):
-    PARTICIPANT = (0, "PARTICIPANT")
-    CARE_PROVIDER = (1, "CARE_PROVIDER")
-    INVESTIGATOR = (2, "INVESTIGATOR")
-    OUTCOMES_ASSESSOR = (3, "OUTCOMES_ASSESSOR")
-
-
-class InterventionType(StrEnumWithNumeric):
-    DRUG = (0, "DRUG")
-    DEVICE = (1, "DEVICE")
-    BIOLOGICAL = (2, "BIOLOGICAL")
-    PROCEDURE = (3, "PROCEDURE")
-    RADIATION = (4, "RADIATION")
-    BEHAVIORAL = (5, "BEHAVIORAL")
-    GENETIC = (6, "GENETIC")
-    DIETARY_SUPPLEMENT = (7, "DIETARY_SUPPLEMENT")
-    COMBINATION_PRODUCT = (8, "COMBINATION_PRODUCT")
-    DIAGNOSTIC_TEST = (9, "DIAGNOSTIC_TEST")
-    OTHER = (10, "OTHER")
-
-
-class ArmGroupType(StrEnumWithNumeric):
-    EXPERIMENTAL = (0, "EXPERIMENTAL")
-    ACTIVE_COMPARATOR = (1, "ACTIVE_COMPARATOR")
-    PLACEBO_COMPARATOR = (2, "PLACEBO_COMPARATOR")
-    SHAM_COMPARATOR = (3, "SHAM_COMPARATOR")
-    NO_INTERVENTION = (4, "NO_INTERVENTION")
-    OTHER = (5, "OTHER")
-
-
-class MeasureType(StrEnumWithNumeric):
-    PRIMARY = (0, "PRIMARY")
-    SECONDARY = (1, "SECONDARY")
-    OTHER_PRE_SPECIFIED = (2, "OTHER_PRE_SPECIFIED")
-    POST_HOC = (3, "POST_HOC")
-
-
-class SamplingMethod(StrEnumWithNumeric):
-    PROBABILITY_SAMPLE = (0, "PROBABILITY_SAMPLE")
-    NON_PROBABILITY_SAMPLE = (1, "NON_PROBABILITY_SAMPLE")
-
-
-class Sex(StrEnumWithNumeric):
-    ALL = (0, "ALL")
-    FEMALE = (1, "FEMALE")
-    MALE = (2, "MALE")
-
-
-class GenderBased(StrEnumWithNumeric):
-    YES = (1, "YES")
-    NO = (0, "NO")
+class PatientRegistry(Enum):
+    YES = "YES"
+    NO = "NO"
 
     @classmethod
     def _missing_(cls, value: Any):
@@ -149,105 +54,200 @@ class GenderBased(StrEnumWithNumeric):
         return None
 
 
-class Role(StrEnumWithNumeric):
-    SPONSOR = (0, "SPONSOR")
-    PRINCIPAL_INVESTIGATOR = (1, "PRINCIPAL_INVESTIGATOR")
-    SPONSOR_INVESTIGATOR = (2, "SPONSOR_INVESTIGATOR")
+class Phase(Enum):
+    NA = "NA"
+    EARLY_PHASE1 = "EARLY_PHASE1"
+    PHASE1 = "PHASE1"
+    PHASE2 = "PHASE2"
+    PHASE3 = "PHASE3"
+    PHASE4 = "PHASE4"
 
 
-class AgencyClass(StrEnumWithNumeric):
-    NIH = (0, "NIH")
-    FED = (1, "FED")
-    OTHER_GOV = (2, "OTHER_GOV")
-    INDIV = (3, "INDIV")
-    INDUSTRY = (4, "INDUSTRY")
-    NETWORK = (5, "NETWORK")
-    AMBIG = (6, "AMBIG")
-    OTHER = (7, "OTHER")
-    UNKNOWN = (8, "UNKNOWN")
+class PrimaryPurpose(Enum):
+    TREATMENT = "TREATMENT"
+    PREVENTION = "PREVENTION"
+    DIAGNOSTIC = "DIAGNOSTIC"
+    ECT = "ECT"
+    SUPPORTIVE_CARE = "SUPPORTIVE_CARE"
+    SCREENING = "SCREENING"
+    HEALTH_SERVICES_RESEARCH = "HEALTH_SERVICES_RESEARCH"
+    BASIC_SCIENCE = "BASIC_SCIENCE"
+    DEVICE_FEASIBILITY = "DEVICE_FEASIBILITY"
+    OTHER = "OTHER"
 
 
-class Status(StrEnumWithNumeric):
-    ACTIVE_NOT_RECRUITING = (0, "ACTIVE_NOT_RECRUITING")
-    COMPLETED = (1, "COMPLETED")
-    ENROLLING_BY_INVITATION = (2, "ENROLLING_BY_INVITATION")
-    NOT_YET_RECRUITING = (3, "NOT_YET_RECRUITING")
-    RECRUITING = (4, "RECRUITING")
-    SUSPENDED = (5, "SUSPENDED")
-    TERMINATED = (6, "TERMINATED")
-    WITHDRAWN = (7, "WITHDRAWN")
-    AVAILABLE = (8, "AVAILABLE")
-    NO_LONGER_AVAILABLE = (9, "NO_LONGER_AVAILABLE")
-    TEMPORARILY_NOT_AVAILABLE = (10, "TEMPORARILY_NOT_AVAILABLE")
-    APPROVED_FOR_MARKETING = (11, "APPROVED_FOR_MARKETING")
-    WITHHELD = (12, "WITHHELD")
-    UNKNOWN = (13, "UNKNOWN")
+class Masking(Enum):
+    NONE = "NONE"
+    SINGLE = "SINGLE"
+    DOUBLE = "DOUBLE"
+    TRIPLE = "TRIPLE"
+    QUADRUPLE = "QUADRUPLE"
 
 
-class Certainty(StrEnumWithNumeric):
-    VERY_LOW = (0, "VERY_LOW")
-    LOW = (1, "LOW")
-    MODERATE = (2, "MODERATE")
-    HIGH = (3, "HIGH")
-    NO_ESTIMATE = (4, "NO_ESTIMATE")
+class WhoMasked(Enum):
+    PARTICIPANT = "PARTICIPANT"
+    CARE_PROVIDER = "CARE_PROVIDER"
+    INVESTIGATOR = "INVESTIGATOR"
+    OUTCOMES_ASSESSOR = "OUTCOMES_ASSESSOR"
 
 
-class Direction(StrEnumWithNumeric):
-    UP = (0, "UP")
-    DOWN = (1, "DOWN")
-    UP_OR_DOWN = (2, "UP_OR_DOWN")
-    NO_CHANGE = (3, "NO_CHANGE")
+class InterventionType(Enum):
+    DRUG = "DRUG"
+    DEVICE = "DEVICE"
+    BIOLOGICAL = "BIOLOGICAL"
+    PROCEDURE = "PROCEDURE"
+    RADIATION = "RADIATION"
+    BEHAVIORAL = "BEHAVIORAL"
+    GENETIC = "GENETIC"
+    DIETARY_SUPPLEMENT = "DIETARY_SUPPLEMENT"
+    COMBINATION_PRODUCT = "COMBINATION_PRODUCT"
+    DIAGNOSTIC_TEST = "DIAGNOSTIC_TEST"
+    OTHER = "OTHER"
 
 
-class GroupCode(StrEnumWithNumeric):
-    EXP_ARM = (0, "EXP_ARM")
-    COMP_ARM = (1, "COMP_ARM")
-    TOTAL = (2, "TOTAL")
+class ArmGroupType(Enum):
+    EXPERIMENTAL = "EXPERIMENTAL"
+    ACTIVE_COMPARATOR = "ACTIVE_COMPARATOR"
+    PLACEBO_COMPARATOR = "PLACEBO_COMPARATOR"
+    SHAM_COMPARATOR = "SHAM_COMPARATOR"
+    NO_INTERVENTION = "NO_INTERVENTION"
+    OTHER = "OTHER"
 
 
-class Type(StrEnumWithNumeric):
-    SERIOUS = (0, "SERIOUS")
-    OTHER = (1, "OTHER")
+class MeasureType(Enum):
+    PRIMARY = "PRIMARY"
+    SECONDARY = "SECONDARY"
+    OTHER_PRE_SPECIFIED = "OTHER_PRE_SPECIFIED"
+    POST_HOC = "POST_HOC"
 
 
-class PValue(StrEnumWithNumeric):
-    STUDENT_T_TEST_2_SIDED = (0, "STUDENT_T_TEST_2_SIDED")
-    ANOVA = (1, "ANOVA")
-    CHI_SQUARED = (2, "CHI_SQUARED")
-    CHI_SQUARED_CORRECTION = (3, "CHI_SQUARED_CORRECTION")
-    COCHRAN_MANTEL_HAENSZEL = (4, "COCHRAN_MANTEL_HAENSZEL")
-    FISHER_EXACT = (5, "FISHER_EXACT")
-    KRUSKAL_WALLIS = (6, "KRUSKAL_WALLIS")
-    LOG_RANK = (7, "LOG_RANK")
-    MCNEMAR = (8, "MCNEMAR")
-    WILCOXON_MANN_WHITNEY = (9, "WILCOXON_MANN_WHITNEY")
-    REGRESSION_LINEAR = (10, "REGRESSION_LINEAR")
-    REGRESSION_LOGISTIC = (11, "REGRESSION_LOGISTIC")
-    REGRESSION_COX = (12, "REGRESSION_COX")
+class SamplingMethod(Enum):
+    PROBABILITY_SAMPLE = "PROBABILITY_SAMPLE"
+    NON_PROBABILITY_SAMPLE = "NON_PROBABILITY_SAMPLE"
 
 
-class AnnotationType(StrEnumWithNumeric):
-    COMMENT = (0, "COMMENT")
-    PRIMARY_CP = (1, "PRIMARY_CP")
-    SECONDARY_CP = (2, "SECONDARY_CP")
+class Sex(Enum):
+    ALL = "ALL"
+    FEMALE = "FEMALE"
+    MALE = "MALE"
 
 
-class UnpostedEventType(StrEnumWithNumeric):
-    RESET = (0, "RESET")
-    RELEASE = (1, "RELEASE")
-    UNRELEASE = (2, "UNRELEASE")
-    CANCELED = (3, "CANCELED")
+class GenderBased(Enum):
+    YES = "YES"
+    NO = "NO"
+
+    @classmethod
+    def _missing_(cls, value: Any):
+        if isinstance(value, str):
+            value_lower = value.strip().lower()
+            if value_lower in {"yes", "true"}:
+                return cls.YES
+            if value_lower in {"no", "false"}:
+                return cls.NO
+        if isinstance(value, bool):
+            return cls.YES if value else cls.NO
+        return None
 
 
-class UnpostedAnnotationSource(StrEnumWithNumeric):
-    NLM = (0, "NLM")
-    SPONSOR = (1, "SPONSOR")
+class Role(Enum):
+    SPONSOR = "SPONSOR"
+    PRINCIPAL_INVESTIGATOR = "PRINCIPAL_INVESTIGATOR"
+    SPONSOR_INVESTIGATOR = "SPONSOR_INVESTIGATOR"
 
 
-class SubmissionStatus(StrEnumWithNumeric):
-    PENDING = (0, "PENDING")
-    RELEASED = (1, "RELEASED")
-    RESET = (2, "RESET")
+class AgencyClass(Enum):
+    NIH = "NIH"
+    FED = "FED"
+    OTHER_GOV = "OTHER_GOV"
+    INDIV = "INDIV"
+    INDUSTRY = "INDUSTRY"
+    NETWORK = "NETWORK"
+    AMBIG = "AMBIG"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+class Status(Enum):
+    ACTIVE_NOT_RECRUITING = "ACTIVE_NOT_RECRUITING"
+    COMPLETED = "COMPLETED"
+    ENROLLING_BY_INVITATION = "ENROLLING_BY_INVITATION"
+    NOT_YET_RECRUITING = "NOT_YET_RECRUITING"
+    RECRUITING = "RECRUITING"
+    SUSPENDED = "SUSPENDED"
+    TERMINATED = "TERMINATED"
+    WITHDRAWN = "WITHDRAWN"
+    AVAILABLE = "AVAILABLE"
+    NO_LONGER_AVAILABLE = "NO_LONGER_AVAILABLE"
+    TEMPORARILY_NOT_AVAILABLE = "TEMPORARILY_NOT_AVAILABLE"
+    APPROVED_FOR_MARKETING = "APPROVED_FOR_MARKETING"
+    WITHHELD = "WITHHELD"
+    UNKNOWN = "UNKNOWN"
+
+
+class Certainty(Enum):
+    VERY_LOW = "VERY_LOW"
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+    NO_ESTIMATE = "NO_ESTIMATE"
+
+
+class Direction(Enum):
+    UP = "UP"
+    DOWN = "DOWN"
+    UP_OR_DOWN = "UP_OR_DOWN"
+    NO_CHANGE = "NO_CHANGE"
+
+
+class GroupCode(Enum):
+    EXP_ARM = "EXP_ARM"
+    COMP_ARM = "COMP_ARM"
+    TOTAL = "TOTAL"
+
+
+class Type(Enum):
+    SERIOUS = "SERIOUS"
+    OTHER = "OTHER"
+
+
+class PValue(Enum):
+    STUDENT_T_TEST_2_SIDED = "STUDENT_T_TEST_2_SIDED"
+    ANOVA = "ANOVA"
+    CHI_SQUARED = "CHI_SQUARED"
+    CHI_SQUARED_CORRECTION = "CHI_SQUARED_CORRECTION"
+    COCHRAN_MANTEL_HAENSZEL = "COCHRAN_MANTEL_HAENSZEL"
+    FISHER_EXACT = "FISHER_EXACT"
+    KRUSKAL_WALLIS = "KRUSKAL_WALLIS"
+    LOG_RANK = "LOG_RANK"
+    MCNEMAR = "MCNEMAR"
+    WILCOXON_MANN_WHITNEY = "WILCOXON_MANN_WHITNEY"
+    REGRESSION_LINEAR = "REGRESSION_LINEAR"
+    REGRESSION_LOGISTIC = "REGRESSION_LOGISTIC"
+    REGRESSION_COX = "REGRESSION_COX"
+
+
+class AnnotationType(Enum):
+    COMMENT = "COMMENT"
+    PRIMARY_CP = "PRIMARY_CP"
+    SECONDARY_CP = "SECONDARY_CP"
+
+
+class UnpostedEventType(Enum):
+    RESET = "RESET"
+    RELEASE = "RELEASE"
+    UNRELEASE = "UNRELEASE"
+    CANCELED = "CANCELED"
+
+
+class UnpostedAnnotationSource(Enum):
+    NLM = "NLM"
+    SPONSOR = "SPONSOR"
+
+
+class SubmissionStatus(Enum):
+    PENDING = "PENDING"
+    RELEASED = "RELEASED"
+    RESET = "RESET"
 
 
 # ==============================================================================

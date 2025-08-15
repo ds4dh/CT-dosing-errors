@@ -7,8 +7,9 @@ from aidose.meddra.utils import (
     is_full_path,
     has_complete_path,
     get_descendant_info,
+    parse_hlgt_codes_literal
 )
-from aidose.meddra.graph import MedDRA, Node, MedDRALevel
+from aidose.meddra.graph import MedDRA, MedDRALevel
 
 
 class MedDRAUtilsTestCase(unittest.TestCase):
@@ -93,6 +94,33 @@ class MedDRAUtilsTestCase(unittest.TestCase):
         self.assertIn("500@LLT", info)
         self.assertEqual(info["400@PT"]["term"], "Preferred Term")
         self.assertTrue(any("100@SOC" in step[0] for step in info["500@LLT"]["paths"][0]))
+
+
+class ParseHlgtCodesLiteralTest(unittest.TestCase):
+    def test_valid_literal(self):
+        text = "[('HLGT', '10079145'), ('HLGT', '10079159')]"
+        self.assertEqual(
+            parse_hlgt_codes_literal(text),
+            [(MedDRALevel.HLGT, '10079145'), (MedDRALevel.HLGT, '10079159')],
+        )
+
+    def test_case_insensitive_level(self):
+        text = "[('hlgt', '10079145')]"
+        self.assertEqual(
+            parse_hlgt_codes_literal(text),
+            [(MedDRALevel.HLGT, '10079145')],
+        )
+
+    def test_empty_list(self):
+        self.assertEqual(parse_hlgt_codes_literal("[]"), [])
+
+    def test_invalid_literal_syntax(self):
+        with self.assertRaises(ValueError):
+            parse_hlgt_codes_literal("[('HLGT', '10079145')")  # missing bracket
+
+    def test_invalid_level(self):
+        with self.assertRaises(ValueError):
+            parse_hlgt_codes_literal("[('INVALID', '10079145')]")
 
 
 if __name__ == "__main__":
