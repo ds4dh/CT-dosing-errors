@@ -12,7 +12,7 @@ from aidose.ctgov.structures import (
     Masking,
     Sex,
     AgencyClass,
-    Status,
+    Status, ArmGroupType,
 )
 
 from typing import Any, List, Sequence, Dict
@@ -21,6 +21,8 @@ from enum import Enum
 JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
 
 
+# TODO: Certain fields and Enum-types are missing in the feature extraction, e.g., ResponsibleParty, Role,
+#  MoreInfoModule, CertaintyModule, etc.
 # =========================
 # Intervention accessors
 # =========================
@@ -122,6 +124,7 @@ def _label_count_features_from_positive_terms(
       Feature(name=f"label.{LABEL}", value=<sum numAffected>, declared_type=int)
     If a label is unused for the study, value=0.
     """
+    # TODO: This is murky.
     feats: List[Feature] = []
     term_to_label = term_to_best_label_map_from_positive_terms(positive_terms)
 
@@ -133,7 +136,7 @@ def _label_count_features_from_positive_terms(
         stats = getattr(payload, "stats", None) or payload.get("stats")
         num_aff = getattr(stats, "numAffected", None)
         if num_aff is None and isinstance(stats, dict):
-            num_aff = stats.get("numAffected")
+            num_aff = stats.get("numAffected")  # TODO: Do we need this?
         try:
             num_aff_int = int(num_aff)
         except (TypeError, ValueError):
@@ -215,6 +218,22 @@ def extract_features_for_study(
 
     feats.append(Feature(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
                          declared_type=bool))
+    # --- Description Module ---
+    feats.append(Feature(name="briefSummary",
+                         value=ps.descriptionModule.briefSummary,
+                         declared_type=str))
+
+    feats.append(Feature(name="detailedDescription",
+                         value=ps.descriptionModule.detailedDescription,
+                         declared_type=str))
+    # --- Conditions Module ---
+    feats.append(Feature(name="conditions",
+                         value=" ".join(ps.conditionsModule.conditions) if ps and ps.conditionsModule else None,
+                         declared_type=str))
+
+    feats.append(Feature(name="conditionsKeywords",
+                         value=" ".join(ps.conditionsModule.keywords) if ps and ps.conditionsModule else None,
+                         declared_type=str))
 
     # --- Documents ---
     feats.append(Feature(name="hasProtocol", value=has_protocol(study), declared_type=bool))
@@ -222,21 +241,42 @@ def extract_features_for_study(
     feats.append(Feature(name="hasIcf", value=has_icf(study), declared_type=bool))
 
     # --- Arms & interventions ---
-    num_arms = len(get_protocol_arm_groups(study))
+    arms = get_protocol_arm_groups(study)
+
+    num_arms = len(arms)
     feats.append(Feature(name="numArms", value=num_arms, declared_type=int))
+
+    arm_descriptions = [getattr(arm, "description", None) for arm in arms]
+    feats.append(Feature(name="armDescriptions",
+                         value=" ".join(
+                             f"arm {i + 1}: {s}" for i, s in enumerate(arm_descriptions)) if arm_descriptions else None,
+                         declared_type=str))
+    arm_group_types = [getattr(arm, "type", None) for arm in arms]
+    feats.append(Feature(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
+                         declared_type=ArmGroupType))
 
     interventions = get_protocol_interventions(study)
     feats.append(Feature(name="numInterventions", value=len(interventions), declared_type=int))
 
-    # intervention types (list[InterventionType]); keep raw; expand later
     itypes = [getattr(itv, "type", None) for itv in interventions]
-    itypes = [t for t in itypes if isinstance(t, InterventionType)] or None
     feats.append(Feature(name="interventionTypes", value=itypes, declared_type=InterventionType))
+
+    i_descriptions = [getattr(itv, "description", None) for itv in interventions]
+    feats.append(Feature(name="interventionDescriptions",
+                         value=" ".join(f"intervention {i + 1}: {s}" for i, s in
+                                        enumerate(i_descriptions)) if i_descriptions else None,
+                         declared_type=str))
+    i_names = [getattr(itv, "name", None) for itv in interventions]
+    feats.append(Feature(name="interventionNames",
+                         value=" ".join(
+                             f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
+                         declared_type=str))
 
     # --- Locations ---
     loc_details = get_location_details(study)
     feats.append(Feature(name="numLocations", value=len(loc_details), declared_type=int))
-    # feats.append(Feature(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
+    feats.append(
+        Feature(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
 
     # --- ADE enrichment ---
     ade = ade_analysis_results_for_study
@@ -244,7 +284,7 @@ def extract_features_for_study(
     feats.append(Feature(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
     feats.append(Feature(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
-    # canonical label counts (already numeric; no enum expansion needed)
+    # canonical label counts
     feats.extend(_label_count_features_from_positive_terms(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
