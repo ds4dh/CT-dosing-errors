@@ -127,6 +127,22 @@ class FeatureUnitTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             Feature(name="bad_list", value=[Phase.P1, Other.X], declared_type=Phase)  # mixed enum types not allowed
 
+    def test_enum_list_all_none_allowed(self):
+        f = Feature(name="phase_list", value=[None, None], declared_type=Phase)
+        feats = f.as_multi_hot()
+        self.assertEqual([feat.name for feat in feats], ["phase_list.P1", "phase_list.P2", "phase_list.P3"])
+        self.assertTrue(all(feat.declared_type is int for feat in feats))
+        self.assertEqual([feat.value for feat in feats], [None, None, None])
+
+    def test_enum_list_mixed_none_and_members_rejected(self):
+        with self.assertRaises(TypeError):
+            Feature(name="phase_list", value=[Phase.P1, None], declared_type=Phase)
+
+    def test_enum_list_empty_treated_as_all_none(self):
+        f = Feature(name="phase_list", value=[], declared_type=Phase)
+        feats = f.as_multi_hot()
+        self.assertEqual([feat.value for feat in feats], [None, None, None])
+
 
 class FeaturesListUnitTest(unittest.TestCase):
     def test_non_enum_feature_passthrough(self):

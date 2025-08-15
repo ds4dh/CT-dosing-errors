@@ -38,38 +38,51 @@ class Feature:
     # -------------------- validation --------------------
 
     def __post_init__(self) -> None:
+        # declared_type must be a real type
         if not isinstance(self.declared_type, type):
             raise TypeError("declared_type must be a type object (e.g., str, int, bool, or a concrete Enum subclass).")
 
+        # disallow Enum base
         if self.declared_type is Enum:
             raise TypeError("declared_type must be a concrete Enum subclass, not Enum.")
 
+        # missing is always allowed
         if self.value is None:
             return
 
+        # strict bool (no ints)
         if self.declared_type is bool:
             if type(self.value) is not bool:
                 raise TypeError(f"Feature '{self.name}' expects value of type bool, got {type(self.value).__name__}")
             return
 
+        # Enum handling
         if issubclass(self.declared_type, Enum):
-            # single Enum?
+            # single Enum member
             if isinstance(self.value, self.declared_type):
                 return
-            # list of Enum?
+
+            # list of Enum / None — allow all-None; allow all Enum; reject mixed
             if isinstance(self.value, list):
-                for i, elem in enumerate(self.value):
-                    if not isinstance(elem, self.declared_type):
-                        raise TypeError(
-                            f"Feature '{self.name}' element at index {i} is not {self.declared_type.__name__}: "
-                            f"got {type(elem).__name__}"
-                        )
-                return
+                if len(self.value) == 0:
+                    # empty list treated as "all None"
+                    return
+                if all(elem is None for elem in self.value):
+                    return
+                if all(isinstance(elem, self.declared_type) for elem in self.value):
+                    return
+                raise TypeError(
+                    f"Feature '{self.name}' list must contain all {self.declared_type.__name__} "
+                    f"or all None, got mixed types."
+                )
+
+            # anything else is invalid for Enum declared_type
             raise TypeError(
                 f"Feature '{self.name}' expects {self.declared_type.__name__} or list[{self.declared_type.__name__}], "
                 f"got {type(self.value).__name__}"
             )
 
+        # General case
         if not isinstance(self.value, self.declared_type):
             raise TypeError(
                 f"Feature '{self.name}' expects value of type {self.declared_type.__name__}, "
@@ -113,35 +126,53 @@ class Feature:
 
     def as_multi_hot(self) -> List[Feature]:
         """
-        For a single or list[Enum] value: produce multi-hot counts (type=int).
+        For a single Enum value or a list of Enum values: produce multi-hot counts (type=int).
         Names are "<EnumClass>.<MEMBER>".
 
-        If value is None -> all features have value=None (type=int).
-        If value is a single Enum -> that member gets 1, others 0.
-        If value is a list -> counts reflect occurrences (duplicates allowed).
+        Behavior:
+        - If value is None -> all features have value=None (type=int).
+        - If value is a single Enum -> that member gets 1, others 0.
+        - If value is a list:
+            * If empty or all elements are None -> all features have value=None (type=int).
+            * Otherwise -> counts reflect occurrences (duplicates allowed).
         """
+
         if not (isinstance(self.declared_type, type) and issubclass(self.declared_type, Enum)):
             raise TypeError("as_multi_hot requires declared_type to be a concrete Enum subclass.")
 
         enum_cls = self.declared_type
-        feats: List[Feature] = []
+        feats: list[Feature] = []
 
+        # value is None -> all None
         if self.value is None:
             for member in enum_cls:
                 feats.append(Feature(f"{self.name}.{member.name}", None, int))
             return feats
 
-        # count occurrences
-        counts: Dict[Enum, int] = {}
+        # single Enum -> 1 for that member, 0 for others
         if isinstance(self.value, self.declared_type):
-            counts[self.value] = 1
-        elif isinstance(self.value, list):
+            for member in enum_cls:
+                feats.append(Feature(f"{self.name}.{member.name}", 1 if member is self.value else 0, int))
+            return feats
+
+        # list case
+        if isinstance(self.value, list):
+            # if empty or all None -> treat as unknown => all None
+            if len(self.value) == 0 or all(elem is None for elem in self.value):
+                for member in enum_cls:
+                    feats.append(Feature(f"{self.name}.{member.name}", None, int))
+                return feats
+
+            # otherwise we already validated no Nones and all are correct Enum members
+            counts: dict[Enum, int] = {}
             for elem in self.value:
                 counts[elem] = counts.get(elem, 0) + 1
+            for member in enum_cls:
+                feats.append(Feature(f"{self.name}.{member.name}", counts.get(member, 0), int))
+            return feats
 
-        for member in enum_cls:
-            feats.append(Feature(f"{self.name}.{member.name}", counts.get(member, 0), int))
-        return feats
+        # should be unreachable due to __post_init__
+        raise TypeError("Invalid enum value state for multi-hot.")
 
 
 class FeaturesList(list[Feature]):
