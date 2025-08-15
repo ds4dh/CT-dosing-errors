@@ -1,55 +1,38 @@
-from aidose.ctgov.structures import Study
+from aidose.meddra import MEDDRA_DATASET_PATH
+from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
+from aidose.dataset import (
+    MEDDRA_LABELS_JSON_PATH,
+    CTGOV_NCTIDS_LIST_FILTERED_PATH,
+    ADE_ANALYSIS_RESULTS_PATH,
+    END_POINT_HF_DATASET_PATH
+)
 
-from aidose.meddra import MEDDRA_DATASET_PATH, MEDDRA_CREATED_ARTIFACTS_DIR
 from aidose.meddra.graph import MedDRA
 from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
 
+from aidose.ctgov.structures import Study
+import aidose.ctgov.api_download as api_download
+
+from aidose.dataset.utils import include_trial_after_sequential_filtering
+
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.ade import ADEAnalysisResultForStudy
 
-from aidose.dataset.utils import include_trial_after_sequential_filtering, has_protocol
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
-from aidose.dataset.interventions import get_intervention_types
-from aidose.dataset.features import extract_features_for_study, has_protocol, StudyEnrichment
 
-from aidose import RESOURCES_DIR
-from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
-import aidose.ctgov.api_download as api_download
+from aidose.dataset.feature_extraction import FeaturesList, extract_features_for_study
 
-import pandas as pd
+from datasets import Dataset, Features, Value
+
 from typing import List, Dict
 
 import os
 import json
 import tqdm
 
-MEDDRA_LABELS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
 
-CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
-                                               "ctgov_nctids_list_filtered.txt")
-
-ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
-
-
-def filter_trials_list(ids_list: list[str]) -> list[str]:
-    ids_list_filtered: List[str] = []
-
-    for nct_id in tqdm.tqdm(ids_list, desc="Parsing trials and filtering them."):
-        json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
-
-        with open(json_path, 'r') as f:
-            study_data = json.load(f)
-
-        study = Study(**study_data)
-
-        if include_trial_after_sequential_filtering(study):
-            ids_list_filtered.append(nct_id)
-
-    return ids_list_filtered
-
-
-if __name__ == '__main__':
+def main():
     # -----------------------------
     # 0) MedDRA positive terms
     # -----------------------------
@@ -58,7 +41,7 @@ if __name__ == '__main__':
         meddra = MedDRA()
         meddra.load_data(MEDDRA_DATASET_PATH)
 
-        codes = parse_hlgt_codes_literal("[('HLGT', '10079145'), ('HLGT', '10079159')]")
+        codes = parse_hlgt_codes_literal("[('HLGT', '10079145'), ('HLGT', '10079159')]")  # TODO: What was this?
         ade_analysis_result = build_meddra_descendants(meddra, codes)
         meddra_labels = sorted(list(ade_analysis_result.terms))
         with open(MEDDRA_LABELS_JSON_PATH, "w", encoding="utf-8") as f:
@@ -67,10 +50,6 @@ if __name__ == '__main__':
     else:
         with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
             meddra_labels = json.load(f).get("terms")
-
-    # TODO: Ensure the following 2 commented lines are actually redundant:
-    # labels_header, labels_rows = meddra_labels_to_csv_rows(meddra_labels)
-    # paths_header, paths_rows = meddra_paths_to_csv_rows(result.paths)
 
     # -----------------------------------
     # 1) CTGov download and filtering
@@ -82,7 +61,18 @@ if __name__ == '__main__':
     if not os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH):
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r', encoding='utf-8') as f:
             nctids_list_all = [line.strip() for line in f if line.strip()]
-        nctids_list_filtered = filter_trials_list(nctids_list_all)
+
+        for nct_id in tqdm.tqdm(nctids_list_all, desc="Parsing trials and filtering them."):
+            json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
+
+            with open(json_path, 'r') as f:
+                study_data = json.load(f)
+
+            study = Study(**study_data)
+
+            if include_trial_after_sequential_filtering(study):
+                nctids_list_filtered.append(nct_id)
+
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, 'w', encoding='utf-8') as f:
             for nctid in nctids_list_filtered:
                 f.write(f"{nctid}\n")
@@ -99,8 +89,8 @@ if __name__ == '__main__':
     #      - positive_terms: Dict[str, PositiveTermMatch]  # or {} if none
     # -------------------------------------------------
 
-    positive_trials: List[ADEAnalysisResultForStudy] = []
-    negative_trials: List[ADEAnalysisResultForStudy] = []
+    positive_trials_ade: List[ADEAnalysisResultForStudy] = []
+    negative_trials_ade: List[ADEAnalysisResultForStudy] = []
 
     if not os.path.exists(ADE_ANALYSIS_RESULTS_PATH):
 
@@ -118,18 +108,18 @@ if __name__ == '__main__':
                 continue
 
             if ade_analysis_result.positive_terms:
-                positive_trials.append(ade_analysis_result)
+                positive_trials_ade.append(ade_analysis_result)
             else:
-                negative_trials.append(ade_analysis_result)
+                negative_trials_ade.append(ade_analysis_result)
 
-        positive_trials.sort(key=lambda x: x.nctid, reverse=False)
-        negative_trials.sort(key=lambda x: x.nctid, reverse=False)
+        positive_trials_ade.sort(key=lambda x: x.nctid, reverse=False)
+        negative_trials_ade.sort(key=lambda x: x.nctid, reverse=False)
 
         with open(ADE_ANALYSIS_RESULTS_PATH, "w", encoding="utf-8") as f:
             json.dump(
                 {
-                    "positive_trials": [item.model_dump() for item in positive_trials],
-                    "negative_trials": [item.model_dump() for item in negative_trials],
+                    "positive_trials": [item.model_dump() for item in positive_trials_ade],
+                    "negative_trials": [item.model_dump() for item in negative_trials_ade],
                     "normalized_ade_processing_errors": normalized_ade_processing_errors,
                 },
                 f,
@@ -139,8 +129,8 @@ if __name__ == '__main__':
     else:
         with open(ADE_ANALYSIS_RESULTS_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-            positive_trials = [ADEAnalysisResultForStudy.model_validate(item) for item in data["positive_trials"]]
-            negative_trials = [ADEAnalysisResultForStudy.model_validate(item) for item in data["negative_trials"]]
+            positive_trials_ade = [ADEAnalysisResultForStudy.model_validate(item) for item in data["positive_trials"]]
+            negative_trials_ade = [ADEAnalysisResultForStudy.model_validate(item) for item in data["negative_trials"]]
 
     # -------------------------------------------------
     # 3) Build global canonical label columns
@@ -148,67 +138,65 @@ if __name__ == '__main__':
     # -------------------------------------------------
     canonical_label_set: set[str] = set()
 
-    for ade_result in positive_trials:  # List[ADEAnalysisResultForStudy]
+    for ade_analysis in positive_trials_ade:  # List[ADEAnalysisResultForStudy]
         canonical_label_set.update(
-            canonical_labels_from_positive_terms(ade_result.positive_terms)
+            canonical_labels_from_positive_terms(ade_analysis.positive_terms)
         )
 
     canonical_label_cols = sorted(canonical_label_set)
 
     # -------------------------------------------------
-    # 4) Build global intervention type columns (all studies)
+    # 4) Feature extraction (per study, using ADE enrichment)
     # -------------------------------------------------
-    all_intervention_types: set[str] = set()
-    for item in positive_trials + negative_trials:
-        study: Study = item["study"]
-        all_intervention_types.update(get_intervention_types(study))
-    all_intervention_type_cols = sorted(all_intervention_types)
-    # TODO: Remove the above, as this is available under strctures.InterventionType
+    dataset_features: List[FeaturesList] = []
+    for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
+        study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{ade_analysis.nctid}.json")
+        with open(study_path, "r", encoding="utf-8") as f:
+            study = Study.model_validate_json(f.read())
 
-    # -------------------------------------------------
-    # 5) Feature extraction (per study, using external enrichment)
-    # -------------------------------------------------
-    feature_rows: list[dict] = []
-    for item in tqdm.tqdm(positive_trials + negative_trials, desc="Extracting features"):
-        study: Study = item["study"]
-        enrichment = {
-            "ade_by_group": item.get("ade_by_group", {}),
-            "ade_clinical": item.get("ade_clinical", {}),
-            "positive_terms": item.get("positive_terms", {}),
-        }
-        row = extract_features_for_study(
+        features = extract_features_for_study(
             study,
             canonical_label_cols=canonical_label_cols,
-            all_intervention_type_cols=all_intervention_type_cols,
-            enrichment=enrichment,
+            ade_analysis_results_for_study=ade_analysis,
         )
-        feature_rows.append(row)
 
-    features_df = pd.DataFrame(feature_rows)
-
-    # -------------------------------------------------
-    # 6) (Optional) subsets: trials with protocol flag
-    #    NOTE: our has_protocol() expects a Study, not the result dict
-    # -------------------------------------------------
-    positive_trials_with_protocol = [
-        itm for itm in positive_trials if has_protocol(itm["study"])
-    ]
-    negative_trials_with_protocol = [
-        itm for itm in negative_trials if has_protocol(itm["study"])
-    ]
+        features = features.expand_enums()
+        dataset_features.append(features)
 
     # -------------------------------------------------
-    # 7) (Optional) Persist artifacts (you can adapt paths)
-    # -------------------------------------------------
-    features_df.to_csv(os.path.join(RESOURCES_DIR, "tabular_dataset.csv"), index=False, encoding="utf-8")
-    # with open("./data/positive_trials.json", "w", encoding="utf-8") as f:
-    #     json.dump(positive_trials, f, ensure_ascii=False)
-    # with open("./data/negative_trials.json", "w", encoding="utf-8") as f:
-    #     json.dump(negative_trials, f, ensure_ascii=False)
-    # with open("./data/errors.json", "w", encoding="utf-8") as f:
-    #     json.dump(errors, f, ensure_ascii=False)
+    # 5)  Dataset creation
+    # -----------------------------------
 
-    # Quick visibility (remove later)
-    print("Canonical label columns:", len(canonical_label_cols))
-    print("Intervention type columns:", len(all_intervention_type_cols))
-    print("Feature rows:", len(features_df))
+    def hf_type_map(t: type) -> str:
+        if t is str:
+            return "string"
+        if t is int:
+            return "int64"
+        if t is float:
+            return "float64"
+        if t is bool:
+            return "bool"
+        else:
+            raise NotImplementedError
+
+    first = dataset_features[0]
+    names = first.get_names()
+    types = first.get_types()
+
+    schema = Features({n: Value(hf_type_map(t)) for n, t in zip(names, types)})
+
+    hf_dataset = Dataset.from_list(
+        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
+        features=schema,
+    )
+
+    # -------------------------------------------------
+    # 6) Saving
+    # -------------------------------------------------
+    # TODO: Add versioning
+    hf_dataset.save_to_disk(END_POINT_HF_DATASET_PATH)
+
+
+if __name__ == '__main__':
+    if not os.path.exists(END_POINT_HF_DATASET_PATH):
+        main()
