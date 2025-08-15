@@ -2,6 +2,7 @@ from aidose.meddra import MEDDRA_DATASET_PATH
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 from aidose.dataset import (
     MEDDRA_LABELS_JSON_PATH,
+    MEDDRA_HLGT_CODES_LITERAL,
     CTGOV_NCTIDS_LIST_FILTERED_PATH,
     ADE_ANALYSIS_RESULTS_PATH,
     END_POINT_HF_DATASET_PATH
@@ -41,7 +42,7 @@ def main():
         meddra = MedDRA()
         meddra.load_data(MEDDRA_DATASET_PATH)
 
-        codes = parse_hlgt_codes_literal("[('HLGT', '10079145'), ('HLGT', '10079159')]")  # TODO: What was this?
+        codes = parse_hlgt_codes_literal(MEDDRA_HLGT_CODES_LITERAL)
         ade_analysis_result = build_meddra_descendants(meddra, codes)
         meddra_labels = sorted(list(ade_analysis_result.terms))
         with open(MEDDRA_LABELS_JSON_PATH, "w", encoding="utf-8") as f:

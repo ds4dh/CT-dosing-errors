@@ -4,8 +4,8 @@ from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW
 
 import os
 
-
 MEDDRA_LABELS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
+MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"
 
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
                                                "ctgov_nctids_list_filtered.txt")
