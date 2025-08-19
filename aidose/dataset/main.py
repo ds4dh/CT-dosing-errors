@@ -1,4 +1,4 @@
-from aidose.meddra import MEDDRA_DATASET_PATH
+from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 from aidose.dataset import (
     MEDDRA_LABELS_JSON_PATH,

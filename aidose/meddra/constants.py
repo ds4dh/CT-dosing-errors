@@ -2,7 +2,9 @@ from aidose import RESOURCES_DIR
 
 import os
 
-MEDDRA_DATASET_PATH = os.path.join(RESOURCES_DIR, "MEDDRA", "MedDRA_27_1_English", "MedAscii")
+MEDDRA_VERSION = "27_1_English"
+
+MEDDRA_DATASET_PATH = os.path.join(RESOURCES_DIR, "MEDDRA", "MedDRA_{}".format(MEDDRA_VERSION), "MedAscii")
 
 if not os.path.exists(MEDDRA_DATASET_PATH):
     raise FileNotFoundError(
