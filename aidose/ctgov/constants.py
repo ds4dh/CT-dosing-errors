@@ -1,9 +1,13 @@
-from aidose import CORPORA_ROOT_DIR, RESOURCES_DIR
+from aidose import DATASETS_ROOT, RESOURCES_DIR
 
 import os
 
-CTGOV_DATASET_PATH = os.path.join(CORPORA_ROOT_DIR, "CTGOV")
-os.makedirs(CTGOV_DATASET_PATH, exist_ok=True)
+if DATASETS_ROOT:
+    CTGOV_DATASET_PATH = os.path.join(DATASETS_ROOT, "CTGOV")
+    os.makedirs(CTGOV_DATASET_PATH, exist_ok=True)
+else:
+    CTGOV_DATASET_PATH = os.path.join(RESOURCES_DIR, "CTGOV")
+    os.makedirs(CTGOV_DATASET_PATH, exist_ok=True)
 
 CTGOV_DATASET_RAW_PATH = os.path.join(CTGOV_DATASET_PATH, "raw")
 

@@ -183,6 +183,7 @@ def extract_features_for_study(
     feats.append(Feature(name="enrollmentCount", value=(enroll.count if enroll else None), declared_type=int))
 
     d_info = design.designInfo if design and design.designInfo else None
+    # TODO: Enum should be used for allocation and interventionModel:
     feats.append(Feature(name="allocation", value=(d_info.allocation if d_info else None), declared_type=str))
     feats.append(
         Feature(name="interventionModel", value=(d_info.interventionModel if d_info else None), declared_type=str))
