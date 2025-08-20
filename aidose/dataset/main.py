@@ -34,6 +34,7 @@ import tqdm
 
 
 def main():
+
     # -----------------------------
     # 0) MedDRA positive terms
     # -----------------------------
@@ -65,9 +66,11 @@ def main():
 
         for nct_id in tqdm.tqdm(nctids_list_all, desc="Parsing trials and filtering them."):
             json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
-
-            with open(json_path, 'r') as f:
+            
+            # specify encoding type to be compatible with windows machine
+            with open(json_path, 'r', encoding='utf-8') as f:
                 study_data = json.load(f)
+
 
             study = Study(**study_data)
 
@@ -196,8 +199,11 @@ def main():
     # -------------------------------------------------
     # TODO: Add versioning
     hf_dataset.save_to_disk(END_POINT_HF_DATASET_PATH)
+    print('Everything works fine')
 
 
 if __name__ == '__main__':
+    
     if not os.path.exists(END_POINT_HF_DATASET_PATH):
         main()
+    

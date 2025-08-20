@@ -1,4 +1,4 @@
-from aidose.ctgov.structures import Study
+from aidose.ctgov.structures import Study, InterventionType
 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
@@ -18,7 +18,7 @@ def trial_has_at_least_one_drug_intervention(study: Study) -> bool:
         return False
 
     return any(
-        intervention.type and intervention.type.strip().upper() == "DRUG"
+        intervention.type == InterventionType.DRUG
         for intervention in study.protocolSection.armsInterventionsModule.interventions
     )
 
