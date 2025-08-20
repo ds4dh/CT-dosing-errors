@@ -1,5 +1,5 @@
 from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
-from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
+from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
 from aidose.dataset import (
     MEDDRA_LABELS_JSON_PATH,
     MEDDRA_HLGT_CODES_LITERAL,
@@ -24,13 +24,14 @@ from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 
 from aidose.dataset.feature_extraction import FeaturesList, extract_features_for_study
 
-from datasets import Dataset, Features, Value
+from datasets import Dataset, Features, Value, DatasetInfo, Version
 
 from typing import List, Dict
 
 import os
 import json
 import tqdm
+from datetime import datetime
 
 
 def main():
@@ -55,8 +56,17 @@ def main():
     # -----------------------------------
     # 1) CTGov download and filtering
     # -----------------------------------
-    if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and os.path.exists(CTGOV_DATASET_RAW_PATH)):
+    if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and
+            os.path.exists(CTGOV_DATASET_RAW_PATH) and
+            os.path.exists(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"))
+    ):
         api_download.main()
+    with open(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"), "r", encoding="utf-8") as f:
+        try:
+            ctgov_download_timestamp = datetime.strptime(
+                f.readlines()[0].split("Download time (UTC):", 1)[1].strip(), "%Y-%m-%dT%H:%MZ")
+        except ValueError:
+            raise RuntimeError("Did not manage to parse the CTGov download timestamp.")
 
     nctids_list_filtered: List[str] = []
     if not os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH):
@@ -189,6 +199,11 @@ def main():
     hf_dataset = Dataset.from_list(
         [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
         features=schema,
+        info=DatasetInfo(description="""A dataset to study the ADE risks in clinical trials. 
+        
+        Based on the studies from `www.clinicaltrials.gov`, downloaded at {}, and the medical dictionary of 
+        `www.meddra.org`, with version {}.""".format(
+            ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION), )
     )
 
     # -------------------------------------------------

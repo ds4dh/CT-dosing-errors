@@ -3,12 +3,15 @@ from aidose.ctgov.utils import (
     download_all_studies_as_zip,
     unzip_and_delete_zip_file,
 )
-from aidose.ctgov import CTGOV_DATASET_RAW_PATH, CTGOV_API_DOWNLOAD_BASE_URL, CTGOV_NCTIDS_LIST_ALL_PATH
+from aidose.ctgov import (CTGOV_DATASET_RAW_PATH,
+                          CTGOV_DATASET_PATH,
+                          CTGOV_API_DOWNLOAD_BASE_URL,
+                          CTGOV_NCTIDS_LIST_ALL_PATH)
 
 import os
 import time
 import requests
-
+from datetime import datetime, timezone
 
 
 def fetch_study_json_with_retries(nct_id: str) -> dict:
@@ -50,6 +53,8 @@ def main():
     if not os.path.exists(CTGOV_DATASET_RAW_PATH):
         download_all_studies_as_zip(target_zip_file_path=f"{CTGOV_DATASET_RAW_PATH}.zip",
                                     ctgov_api_download_base_url=CTGOV_API_DOWNLOAD_BASE_URL)
+        with open(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"), "w") as f:
+            f.write("Download time (UTC): {}\n".format(datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%MZ")))
 
         unzip_and_delete_zip_file(f"{CTGOV_DATASET_RAW_PATH}.zip", CTGOV_DATASET_RAW_PATH)
 
