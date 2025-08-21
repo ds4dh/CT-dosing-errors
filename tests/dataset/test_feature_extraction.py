@@ -7,12 +7,12 @@ from aidose.dataset.feature_extraction import (
     has_protocol,
     has_sap,
     has_icf,
-    get_flow_group_descriptions,
     get_location_details,
     _total_ade_population,  # intentionally testing internal helper
     _label_count_features_from_positive_terms,
     extract_features_for_study,
 )
+from aidose.dataset.utils import get_flow_group_descriptions
 from aidose.dataset.feature import Feature, FeaturesList
 from aidose.dataset.ade import (
     ADEAnalysisResultForStudy,
@@ -205,7 +205,7 @@ class FeaturesExtractorTestCase(unittest.TestCase):
             positive_terms=positive_terms, canonical_label_cols=canonical
         )
 
-        as_dict = {f.name: f.to_cell()["value"] for f in feats}
+        as_dict = {f.name: f.to_dict()["value"] for f in feats}
         self.assertEqual(as_dict["label.Overdose"], 3)
         self.assertEqual(as_dict["label.Seizure"], 6)  # 2 + 4 summed
         self.assertEqual(as_dict["label.Fever"], 0)

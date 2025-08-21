@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from .feature import Feature, FeaturesList
-from .ade import ADEAnalysisResultForStudy
-from .ade_labeling import term_to_best_label_map_from_positive_terms
 from aidose.ctgov.structures import (
     Study,
     InterventionType,
@@ -15,6 +12,16 @@ from aidose.ctgov.structures import (
     Status, ArmGroupType,
 )
 
+from .utils import (has_protocol,
+                    has_sap,
+                    has_icf,
+                    get_protocol_arm_groups,
+                    get_protocol_interventions,
+                    get_location_details)
+from .feature import Feature, FeaturesList
+from .ade import ADEAnalysisResultForStudy
+from .ade_labeling import term_to_best_label_map_from_positive_terms
+
 from typing import Any, List, Sequence, Dict
 from enum import Enum
 
@@ -23,85 +30,6 @@ JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
 
 # TODO: Certain fields and Enum-types are missing in the feature extraction, e.g., ResponsibleParty, Role,
 #  MoreInfoModule, CertaintyModule, etc.
-# =========================
-# Intervention accessors
-# =========================
-
-def get_protocol_interventions(study: Study) -> List[Any]:
-    ps = study.protocolSection
-    if not ps or not ps.armsInterventionsModule:
-        return []
-    return ps.armsInterventionsModule.interventions or []
-
-
-def get_protocol_arm_groups(study: Study) -> List[Any]:
-    ps = study.protocolSection
-    if not ps or not ps.armsInterventionsModule:
-        return []
-    return ps.armsInterventionsModule.armGroups or []
-
-
-# =========================
-# Document helpers
-# =========================
-
-def _has_doc_flag(study: Study, flag_name: str) -> bool:
-    ds = study.documentSection
-    if not ds or not ds.largeDocumentModule:
-        return False
-    large_docs = ds.largeDocumentModule.largeDocs or []
-    for doc in large_docs:
-        val = getattr(doc, flag_name, None)
-        if isinstance(val, bool) and val:
-            return True
-    return False
-
-
-def has_protocol(study: Study) -> bool: return _has_doc_flag(study, "hasProtocol")
-
-
-def has_sap(study: Study) -> bool:       return _has_doc_flag(study, "hasSap")
-
-
-def has_icf(study: Study) -> bool:       return _has_doc_flag(study, "hasIcf")
-
-
-# =========================
-# Optional parity helpers
-# =========================
-
-def get_flow_group_descriptions(study: Study) -> List[str]:
-    rs = study.resultsSection
-    if not rs or not rs.participantFlowModule:
-        return []
-    groups = rs.participantFlowModule.groups or []
-    out: List[str] = []
-    for g in groups:
-        desc = getattr(g, "description", None)
-        if isinstance(desc, str) and desc.strip():
-            out.append(desc)
-    return out
-
-
-def get_location_details(study: Study) -> List[str]:
-    ps = study.protocolSection
-    if not ps or not ps.contactsLocationsModule:
-        return []
-    locs = ps.contactsLocationsModule.locations or []
-    rows: List[str] = []
-    for loc in locs:
-        city = getattr(loc, "city", None) or "N/A"
-        state = getattr(loc, "state", None) or "N/A"
-        country = getattr(loc, "country", None) or "N/A"
-        geo = getattr(loc, "geoPoint", None)
-        lon = getattr(geo, "lon", None) if geo else None
-        lat = getattr(geo, "lat", None) if geo else None
-        rows.append(" | ".join(map(str, [
-            city, state, country,
-            lon if lon is not None else "N/A",
-            lat if lat is not None else "N/A",
-        ])))
-    return rows
 
 
 # =========================
@@ -147,7 +75,6 @@ def _label_count_features_from_positive_terms(
     for label in canonical_label_cols:
         feats.append(Feature(name=f"label.{label}", value=counts.get(label, 0), declared_type=int))
     return feats
-
 
 # =========================
 # Main extractor
