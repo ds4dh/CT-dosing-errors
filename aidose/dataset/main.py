@@ -5,9 +5,10 @@ from aidose.dataset import (
     MEDDRA_HLGT_CODES_LITERAL,
     CTGOV_NCTIDS_LIST_FILTERED_PATH,
     ADE_ANALYSIS_RESULTS_PATH,
-    END_POINT_HF_DATASET_PATH
+    END_POINT_HF_DATASET_PATH,
 )
 
+from aidose.dataset.constants import LIST_OF_FEATURES_TO_DROP, WILSON_PROBA_THRESHOLD, ALPHA_WILSON, TRAINING_SIZE, VALIDATION_SIZE, TEST_SIZE
 from aidose.meddra.graph import MedDRA
 from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
@@ -23,17 +24,20 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 
 from aidose.dataset.feature_extraction import FeaturesList, extract_features_for_study
+from aidose.dataset.final_processing import add_sum_dosing_error, add_dosing_error_rate, add_wilson_label, dataset_spliting
 
-from datasets import Dataset, Features, Value
+from datasets import Dataset, Features, Value, load_from_disk, DatasetDict
 
 from typing import List, Dict
 
 import os
 import json
 import tqdm
+import numpy as np
 
 
 def main():
+
     # -----------------------------
     # 0) MedDRA positive terms
     # -----------------------------
@@ -65,9 +69,11 @@ def main():
 
         for nct_id in tqdm.tqdm(nctids_list_all, desc="Parsing trials and filtering them."):
             json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
-
-            with open(json_path, 'r') as f:
+            
+            # specify encoding type to be compatible with windows machine
+            with open(json_path, 'r', encoding='utf-8') as f:
                 study_data = json.load(f)
+
 
             study = Study(**study_data)
 
@@ -192,12 +198,46 @@ def main():
     )
 
     # -------------------------------------------------
+    # 5) Finale dataset processing
+    # -------------------------------------------------
+
+    # convert to df to be more efficient
+    df_dataset = hf_dataset.to_pandas()
+
+    # add the three different labels
+    df_dataset = add_sum_dosing_error(df_dataset)
+    df_dataset = add_dosing_error_rate(df_dataset)
+    df_dataset = add_wilson_label(df_dataset, alpha=ALPHA_WILSON, proba_threshold=WILSON_PROBA_THRESHOLD)
+
+    # dataset splitting
+    df_train, df_validation, df_test = dataset_spliting(df=df_dataset, train_percent=TRAINING_SIZE, validation_percent=VALIDATION_SIZE, test_percent=TEST_SIZE)
+
+     # delete all feature that are unavailable at the beginning of the trial
+    to_delete = [
+        col for col in df_dataset.columns
+        if any(col == prefix or col.startswith(prefix + ".") for prefix in LIST_OF_FEATURES_TO_DROP)
+    ]
+    df_train = df_train.drop(columns=to_delete)
+    df_validation = df_validation.drop(columns=to_delete)
+    df_test = df_test.drop(columns=to_delete)
+    
+
+    # -------------------------------------------------
     # 6) Saving
     # -------------------------------------------------
+    hf_dataset = DatasetDict({
+        "train": Dataset.from_pandas(df_train, preserve_index=False),
+        "validation": Dataset.from_pandas(df_validation, preserve_index=False),
+        "test": Dataset.from_pandas(df_test, preserve_index=False),    
+    })
+
     # TODO: Add versioning
     hf_dataset.save_to_disk(END_POINT_HF_DATASET_PATH)
 
 
+
 if __name__ == '__main__':
+
     if not os.path.exists(END_POINT_HF_DATASET_PATH):
         main()
+    
