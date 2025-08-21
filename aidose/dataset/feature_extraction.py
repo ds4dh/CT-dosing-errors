@@ -213,9 +213,12 @@ def extract_features_for_study(
     status = ps.statusModule if ps and ps.statusModule else None
     feats.append(Feature(name="overallStatus", value=(status.overallStatus if status else None), declared_type=Status))
 
+    feats.append(Feature(name="completionDate", value=(getattr(getattr(status, "completionDateStruct", None), "date", None) if status else None), declared_type=str))
+    feats.append(Feature(name="startDate", value=(getattr(getattr(status, "startDateStruct", None), "date", None) if status else None), declared_type=str))
+
+
     oversight = ps.oversightModule if ps and ps.oversightModule else None
-    feats.append(
-        Feature(name="oversightHasDmc", value=(oversight.oversightHasDmc if oversight else None), declared_type=bool))
+    feats.append(Feature(name="oversightHasDmc", value=(oversight.oversightHasDmc if oversight else None), declared_type=bool))
 
     feats.append(Feature(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
                          declared_type=bool))
