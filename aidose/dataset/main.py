@@ -202,7 +202,8 @@ def main():
     hf_dataset = Dataset.from_list(
         [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
         features=schema,
-        info=DatasetInfo(description="""A dataset to study the ADE risks in clinical trials. 
+        info=DatasetInfo(features=schema,
+            description="""A dataset to study the ADE risks in clinical trials. 
         
         Based on the studies from `www.clinicaltrials.gov`, downloaded at {}, and the medical dictionary of 
         `www.meddra.org`, with version {}.""".format(
