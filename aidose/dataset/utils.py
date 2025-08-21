@@ -1,4 +1,4 @@
-from aidose.ctgov.structures import Study, InterventionType
+from aidose.ctgov.structures import Study, InterventionType, StudyType, Status
 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
@@ -7,6 +7,20 @@ from rapidfuzz import fuzz
 
 from typing import Dict, List, Tuple, Any, Sequence, Iterable
 import re
+
+def trial_study_type_is_interventional(study: Study) -> bool:
+    if study.protocolSection.designModule.studyType == StudyType.INTERVENTIONAL:
+        return True
+    else:
+        return False
+
+def trial_status_is_either_completed_or_terminated(study: Study) ->bool:
+    if study.protocolSection.statusModule.status == Status.COMPLETED:
+        return True
+    elif study.protocolSection.statusModule.status == Status.TERMINATED:
+        return True
+    else:
+        return False
 
 
 def trial_has_at_least_one_drug_intervention(study: Study) -> bool:
@@ -39,12 +53,18 @@ def trial_has_adverse_events_module(study: Study) -> bool:
 def include_trial_after_sequential_filtering(study: Study) -> bool:
     """
     Sequentially filter trials based on:
-      1. At least one intervention with type "DRUG".
-      2. Presence of a 'resultsSection'.
-      3. Presence of an 'adverseEventsModule' in the 'resultsSection'.
+    1. Study type must be "Interventional".
+    2. Status must be either "Completed" or "Terminated".
+    3. At least one intervention must be of type "DRUG".
+    4. Presence of a 'resultsSection'.
+    5. Presence of an 'adverseEventsModule' in the 'resultsSection'.
 
     Returns True if the trial passes all criteria.
     """
+    if not trial_study_type_is_interventional(study):
+        return False
+    if not trial_status_is_either_completed_or_terminated(study):
+        return False
     if not trial_has_at_least_one_drug_intervention(study):
         return False
     if not trial_has_results_section(study):
