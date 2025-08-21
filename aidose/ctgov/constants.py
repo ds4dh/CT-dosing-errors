@@ -2,7 +2,7 @@ from aidose import DATASETS_ROOT, RESOURCES_DIR
 
 import os
 
-if os.path.exists(DATASETS_ROOT) and DATASETS_ROOT is not None:
+if DATASETS_ROOT is not None and os.path.exists(DATASETS_ROOT):
     CTGOV_DATASET_PATH = os.path.join(DATASETS_ROOT, "CTGOV")
     os.makedirs(CTGOV_DATASET_PATH, exist_ok=True)
 else:
