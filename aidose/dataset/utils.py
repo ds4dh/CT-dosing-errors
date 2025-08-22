@@ -15,7 +15,10 @@ import requests
 # =========================
 
 def trial_study_type_is_interventional(study: Study) -> bool:
-    if study.protocolSection.designModule.studyType == StudyType.INTERVENTIONAL:
+    dm = study.protocolSection.designModule
+    if dm is None:
+        return False
+    if dm.studyType == StudyType.INTERVENTIONAL:
         return True
     else:
         return False
