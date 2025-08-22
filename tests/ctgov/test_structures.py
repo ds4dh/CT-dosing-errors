@@ -9,6 +9,7 @@ from pydantic import ValidationError
 import os
 import json
 from typing import List
+import tqdm
 
 
 class SampleEnum(StrEnumWithNumericDeprecated):
@@ -48,36 +49,31 @@ class CTGOVEntireRegistryParsingAsStudyObjectsIntegrationTest(unittest.TestCase)
     def test_study_parsing_with_pydantic_for_entire_registry(self):
         """Test that all available study JSON files can be parsed as Study objects."""
         parsing_errors: List[tuple[str, str]] = []
+        for nctid in tqdm.tqdm(self.nctids_list, desc="Testing all studies for successful parsing .."):
+            json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+            with open(json_path, 'r') as f:
+                study_data = json.load(f)
 
-        for idx, nct_id in enumerate(self.nctids_list):
-            json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
-
-            try:
-                with open(json_path, 'r') as f:
-                    study_data = json.load(f)
-
-                Study.model_validate(study_data)
-
-            except json.JSONDecodeError as e:
-                parsing_errors.append((nct_id, f"JSON decode error: {str(e)}"))
-            except ValidationError as e:
-
-                print(idx, ": Exception for NCTID:", idx, nct_id)
-                parsing_errors.append((nct_id, f"Pydantic validation error: {str(e)}"))
-            except Exception as e:
-                parsing_errors.append((nct_id, f"Unexpected error: {str(e)}"))
-
-        if parsing_errors:
-            error_msg = "\nParsing errors occurred for the following studies:\n"
-            for nct_id, error in parsing_errors:
-                error_msg += f"\nNCT ID: {nct_id}\nError: {error}\n"
-            self.fail(error_msg)
+            Study.model_validate(study_data)
 
     def test_available_studies_not_unusually_incomplete(self):
         self.assertTrue(
             len(self.nctids_list) > 500000,
             "No JSON files found to test. Check if the paths are correct and files exist."
         )
+
+
+class ManuallyInspectStudyObject(unittest.TestCase):
+    def setUp(self):
+        example_nctid = "NCT07123909"
+        with open(os.path.join(CTGOV_DATASET_RAW_PATH, f"{example_nctid}.json"), 'r') as f:
+            self.study_data = json.load(f)
+
+        self.study = Study(**self.study_data)
+
+    def test(self):
+        print(self.study_data)
+        print(self.study)
 
 
 if __name__ == '__main__':
