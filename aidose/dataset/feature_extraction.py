@@ -24,6 +24,7 @@ from .ade_labeling import term_to_best_label_map_from_positive_terms
 
 from typing import Any, List, Sequence, Dict
 from enum import Enum
+from datetime import datetime
 
 JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
 
@@ -141,11 +142,14 @@ def extract_features_for_study(
     status = ps.statusModule if ps and ps.statusModule else None
     feats.append(Feature(name="overallStatus", value=(status.overallStatus if status else None), declared_type=Status))
 
-    feats.append(Feature(name="completionDate", value=(
-        getattr(getattr(status, "completionDateStruct", None), "date", None) if status else None), declared_type=str))
+    feats.append(Feature(name="completionDate",
+                         value=(getattr(getattr(getattr(status, "completionDateStruct", None), "date", None), "dt",
+                                        None) if status else None),
+                         declared_type=datetime))
     feats.append(Feature(name="startDate",
-                         value=(getattr(getattr(status, "startDateStruct", None), "date", None) if status else None),
-                         declared_type=str))
+                         value=(getattr(getattr(getattr(status, "startDateStruct", None), "date", None), "dt",
+                                        None) if status else None),
+                         declared_type=datetime))
 
     oversight = ps.oversightModule if ps and ps.oversightModule else None
     feats.append(
