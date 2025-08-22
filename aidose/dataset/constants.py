@@ -13,11 +13,6 @@ CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
 END_POINT_HF_DATASET_PATH = os.path.join(RESOURCES_DIR, "dataset")
 
-# TODO: discuss this list -> leadSponsorName?
-# LIST OF FEATURES TO DROP IN THE FINAL DATASET
-LIST_OF_FEATURES_TO_DROP = ["nctId", "studyType", "leadSponsorName", "overallStatus", "isJJ", "hasProtocol", "hasSap",
-                            "hasIcf", "num_ct_level_ade_terms", "ct_level_ade_population", "num_positive_terms_matched",
-                            "label", "completionDate", "startDate"]
 
 ALPHA_WILSON = 0.05
 
