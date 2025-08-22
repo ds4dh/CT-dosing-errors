@@ -8,9 +8,10 @@ CTGov would be avoided.
 """
 
 from __future__ import annotations
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 from enum import Enum
 from typing import Any
+from datetime import datetime
 
 
 # ==============================================================================
@@ -292,7 +293,7 @@ class IdentificationModule(BaseModel):
 class StatusModule(BaseModel):
     """A module of a clinical study protocol that includes the status of the study and other administrative information."""
     status: Status | None = None
-    statusVerifiedDate: str | None = None
+    statusVerifiedDate: Date | None = None
     overallStatus: Status | None = None
     lastKnownStatus: Status | None = None
     delayedPosting: bool | None = None
@@ -301,10 +302,10 @@ class StatusModule(BaseModel):
     startDateStruct: DateStruct | None = None
     primaryCompletionDateStruct: DateStruct | None = None
     completionDateStruct: DateStruct | None = None
-    studyFirstSubmitDate: str | None = None
-    studyFirstSubmitQcDate: str | None = None
+    studyFirstSubmitDate: Date | None = None
+    studyFirstSubmitQcDate: Date | None = None
     studyFirstPostDateStruct: DateStruct | None = None
-    lastUpdateSubmitDate: str | None = None
+    lastUpdateSubmitDate: datetime | None = None
     lastUpdatePostDateStruct: DateStruct | None = None
 
 
@@ -498,7 +499,7 @@ class UnpostedAnnotation(BaseModel):
     """An annotation that is not posted on the study record."""
     source: UnpostedAnnotationSource | None = None
     unpostedResponsibleParty: str | None = None
-    unpostedDate: str | None = None
+    unpostedDate: Date | None = None
 
 
 class Annotation(BaseModel):
@@ -527,21 +528,21 @@ class DocumentSection(BaseModel):
 
 class Submission(BaseModel):
     """A submission of a study record to PRS."""
-    date: str | None = None
+    date: Date | None = None
     status: SubmissionStatus | None = None
-    releaseDate: str | None = None
-    unreleaseDate: str | None = None
-    returnDate: str | None = None
-    resetDate: str | None = None
-    cancelDate: str | None = None
+    releaseDate: Date | None = None
+    unreleaseDate: Date | None = None
+    returnDate: Date | None = None
+    resetDate: Date | None = None
+    cancelDate: Date | None = None
     disposition: str | None = None
-    postDate: str | None = None
+    postDate: Date | None = None
 
 
 class History(BaseModel):
     """The history of changes to the study record."""
     version: str | None = None
-    date: str | None = None
+    date: Date | None = None
     submissions: list[Submission] = Field(default_factory=list)
 
 
@@ -562,7 +563,7 @@ class DerivedSection(BaseModel):
 class UnpostedEvent(BaseModel):
     """An event that is not posted on the study record."""
     type: UnpostedEventType | None = None
-    date: str | None = None
+    date: Date | None = None
     dateUnknown: bool | None = None
 
 
@@ -584,7 +585,7 @@ class ProvidedDocument(BaseModel):
     hasProtocol: bool | None = None
     hasSap: bool | None = None
     hasIcf: bool | None = None
-    date: str | None = None
+    date: Date | None = None
 
 
 class LargeDoc(BaseModel):
@@ -594,8 +595,8 @@ class LargeDoc(BaseModel):
     hasSap: bool | None = None
     hasIcf: bool | None = None
     label: str | None = None
-    date: str | None = None
-    uploadDate: str | None = None
+    date: Date | None = None
+    uploadDate: Date | None = None
     filename: str | None = None
     size: int | None = None
 
@@ -643,10 +644,91 @@ class Organization(BaseModel):
     class_: AgencyClass | None = Field(default=None, alias='class')
 
 
+class Date(BaseModel):
+    """
+    Parses CTGOV date strings into datetime.
+
+    Accepts:
+      - raw string: "2012-03", "March 2012", "Mar 12, 2012", "2012-03-15"
+      - dicts (for robustness): {"date": "..."} or {"dt": "..."}
+      - None
+    Stores the result in `dt` (datetime | None).
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    dt: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_input(cls, v: Any) -> dict[str, Any] | Any:
+        # Allow passing the raw string OR {"date": "..."} OR {"dt": "..."}
+        if isinstance(v, dict):
+            if "dt" in v:
+                return v
+            if "date" in v:
+                return {"dt": v["date"]}
+        # raw scalar (e.g., string) -> funnel into "dt"
+        return {"dt": v}
+
+    @field_validator("dt", mode="before")
+    @classmethod
+    def _parse_ctgov_date(cls, v: Any) -> datetime | None:
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+
+        s = str(v).strip()
+        if s.lower() in {"n/a", "na", "unknown", ""}:
+            return None
+
+        # ISO 8601 (YYYY-MM-DD or full datetime)
+        try:
+            return datetime.fromisoformat(s)
+        except ValueError:
+            pass
+
+        # Year–month -> first day of the month
+        try:
+            dt = datetime.strptime(s, "%Y-%m")
+            return datetime(dt.year, dt.month, 1)
+        except ValueError:
+            pass
+
+        # Month Day, Year
+        for fmt in ("%B %d, %Y", "%b %d, %Y"):
+            try:
+                return datetime.strptime(s, fmt)
+            except ValueError:
+                pass
+
+        # Month Year -> first day of the month
+        for fmt in ("%B %Y", "%b %Y"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                return datetime(dt.year, dt.month, 1)
+            except ValueError:
+                pass
+
+        # Year only -> Jan 1st
+        try:
+            dt = datetime.strptime(s, "%Y")
+            return datetime(dt.year, 1, 1)
+        except ValueError:
+            pass
+
+        raise ValueError(f"Unrecognized date format: {s!r}")
+
+
 class DateStruct(BaseModel):
-    """A date structure."""
-    date: str | None = None
-    type: str | None = None
+    """
+    CTGOV date wrapper: keeps the parsed date (as Date) and the CTGOV 'type' string.
+    JSON I/O uses the key 'type', but the Python attribute is `type_`.
+    """
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    date: Date | None = None
+    type_: str | None = Field(default=None, alias="type")
 
 
 class ExpandedAccessInfo(BaseModel):
