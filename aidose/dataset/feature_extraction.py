@@ -22,6 +22,9 @@ from .feature import Feature, FeaturesList
 from .ade import ADEAnalysisResultForStudy
 from .ade_labeling import term_to_best_label_map_from_positive_terms
 
+from aidose.dataset.constants import WILSON_PROBA_THRESHOLD, ALPHA_WILSON
+from statsmodels.stats.proportion import proportion_confint
+
 from typing import Any, List, Sequence, Dict
 from enum import Enum
 from datetime import datetime
@@ -75,6 +78,54 @@ def _label_count_features_from_positive_terms(
 
     for label in canonical_label_cols:
         feats.append(Feature(name=f"label.{label}", value=counts.get(label, 0), declared_type=int))
+    return feats
+
+
+def add_new_label_features_from_existing(feats: FeaturesList) -> FeaturesList:
+    def get_wilson_lower_bound(x: int, n: int, alpha: float) -> float:
+        """
+        Computes the lower bound of the Wilson confident interval.
+
+        :param x: Number of successes (e.g., number errors in the trials).
+        :param n: Total number of person involved in the trials.
+        :param alpha: Significance level for the confidence interval (default is 0.05).
+        :return: Lower bound of the Wilson score interval.
+        """
+        if n == 0:
+            # in some trials, we have no people at risk -> in this case, we are sure the error rate will be 0 -> lower bound is also zer0
+            return 0.0
+        lower, _ = proportion_confint(count=x, nobs=n, alpha=alpha, method='wilson')
+        return lower
+
+    sum_dosing_error = Feature(name="sum_dosing_errors",
+                               value=sum([feat.value for feat in feats if feat.name.startswith("label.")]),
+                               declared_type=int)
+
+    ct_level_ade_population = next((feat.value for feat in feats if feat.name == "ct_level_ade_population"))
+
+    dosing_error_rate = Feature(name="dosing_error_rate",
+                                value=(
+                                    sum_dosing_error.value / ct_level_ade_population
+                                    if ct_level_ade_population else None),
+                                declared_type=float)
+
+    wilson_lower_bound = Feature(name="wilson_lower_bound",
+                                 value=get_wilson_lower_bound(
+                                     x=sum_dosing_error.value,
+                                     n=ct_level_ade_population,
+                                     alpha=ALPHA_WILSON),
+                                 declared_type=float)
+
+    wilson_label = Feature(name="wilson_label",
+                           value=(1 if wilson_lower_bound.value >= WILSON_PROBA_THRESHOLD else 0),
+                           # TODO: Check this with Félicien
+                           declared_type=int)
+
+    feats.append(sum_dosing_error)
+    feats.append(dosing_error_rate)
+    feats.append(wilson_lower_bound)
+    feats.append(wilson_label)
+
     return feats
 
 
@@ -218,6 +269,7 @@ def extract_features_for_study(
         Feature(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
 
     # --- ADE enrichment ---
+    # TODO: label-related and meta-related fields will be considered separately.
     ade = ade_analysis_results_for_study
     feats.append(Feature(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
     feats.append(Feature(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
@@ -228,5 +280,8 @@ def extract_features_for_study(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
     ))
+
+    # Creating new label-related fields based on existing ones
+    feats = add_new_label_features_from_existing(feats)
 
     return feats
