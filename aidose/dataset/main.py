@@ -26,7 +26,10 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 
-from aidose.dataset.feature_extraction import FeaturesList, extract_features_for_study
+from aidose.dataset.feature import FeaturesList
+from aidose.dataset.feature_extraction import (extract_features_for_training_from_study,
+                                               extract_metadata_from_study,
+                                               extract_labels_from_study)
 
 from aidose.dataset.split import DatasetSplit
 from aidose.dataset.final_processing import add_sum_dosing_error, add_dosing_error_rate, add_wilson_label, \
@@ -166,35 +169,35 @@ def main():
     canonical_label_cols = sorted(canonical_label_set)
 
     # -------------------------------------------------
-    # 4) Feature extraction (per study, using ADE enrichment)
+    # 4) Features, metadata and label extraction (per study, using ADE enrichment)
     # -------------------------------------------------
     dataset_features: List[FeaturesList] = []
+    dataset_metadata: List[FeaturesList] = []
+    dataset_labels: List[FeaturesList] = []
+
     for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
         study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{ade_analysis.nctid}.json")
         with open(study_path, "r", encoding="utf-8") as f:
             study = Study.model_validate_json(f.read())
 
-        features = extract_features_for_study(
-            study,
+        features = extract_features_for_training_from_study(study)
+        metadata = extract_metadata_from_study(study)
+        labels = extract_labels_from_study(
             canonical_label_cols=canonical_label_cols,
             ade_analysis_results_for_study=ade_analysis,
+            wilson_proba_threshold=WILSON_PROBA_THRESHOLD,
+            alpha_wilson=ALPHA_WILSON,
         )
 
         features = features.expand_enums()
+        metadata = metadata.expand_enums()
+        labels = labels.expand_enums()
+
         dataset_features.append(features)
+        dataset_metadata.append(metadata)
+        dataset_labels.append(labels)
 
-    # -------------------------------------------------
-    # TODO:
-    # -------------------------------------------------
-
-    # # delete all feature that are unavailable at the beginning of the trial
-    # to_delete = [
-    #     col for col in df_dataset.columns
-    #     if any(col == prefix or col.startswith(prefix + ".") for prefix in LIST_OF_FEATURES_TO_DROP)
-    # ]
-    # df_train = df_train.drop(columns=to_delete)
-    # df_validation = df_validation.drop(columns=to_delete)
-    # df_test = df_test.drop(columns=to_delete)
+    # TODO: Maybe doing the splitting here and before the `dataset` creation?
 
     # -------------------------------------------------
     # 5)  Dataset creation
@@ -214,14 +217,31 @@ def main():
         else:
             raise NotImplementedError
 
-    first = dataset_features[0]
-    names = first.get_names()
-    types = first.get_types()
+    def build_struct_schema(names, types):
+        return {n: Value(hf_type_map(t)) for n, t in zip(names, types)}
 
-    schema = Features({n: Value(hf_type_map(t)) for n, t in zip(names, types)})
+    # --- derive sub-schemas ---
+    feat_names, feat_types = dataset_features[0].get_names(), dataset_features[0].get_types()
+    meta_names, meta_types = dataset_metadata[0].get_names(), dataset_metadata[0].get_types()
+    label_names, label_types = dataset_labels[0].get_names(), dataset_labels[0].get_types()
 
-    hf_dataset = Dataset.from_list(
-        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
+    features_schema = Features(build_struct_schema(feat_names, feat_types))
+    metadata_schema = Features(build_struct_schema(meta_names, meta_types))
+    labels_schema = Features(build_struct_schema(label_names, label_types))
+
+    schema = Features({
+        "features": features_schema,
+        "metadata": metadata_schema,
+        "labels": labels_schema,
+    })
+
+    hf_dataset = Dataset.from_dict(
+        {
+            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
+            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata],
+            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels],
+        },
+
         features=schema,
         info=DatasetInfo(features=schema,
                          description="""A dataset to study the ADE risks in clinical trials. 
@@ -240,7 +260,7 @@ def main():
     dataset_split_dict = DatasetSplit(
         train_ratio=TRAINING_SIZE,
         valid_ratio=VALIDATION_SIZE,
-        test_ratio=TEST_SIZE).split_chronologically(hf_dataset, date_col="completionDate")
+        test_ratio=TEST_SIZE).split_chronologically(hf_dataset, date_path="metadata.completionDate")
 
     # -------------------------------------------------
     # 6) Saving

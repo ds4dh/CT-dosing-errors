@@ -3,7 +3,6 @@ from __future__ import annotations
 from aidose.ctgov.structures import (
     Study,
     InterventionType,
-    StudyType,
     Phase,
     PrimaryPurpose,
     Masking,
@@ -22,7 +21,6 @@ from .feature import Feature, FeaturesList
 from .ade import ADEAnalysisResultForStudy
 from .ade_labeling import term_to_best_label_map_from_positive_terms
 
-from aidose.dataset.constants import WILSON_PROBA_THRESHOLD, ALPHA_WILSON
 from statsmodels.stats.proportion import proportion_confint
 
 from typing import Any, List, Sequence, Dict
@@ -81,7 +79,10 @@ def _label_count_features_from_positive_terms(
     return feats
 
 
-def add_new_label_features_from_existing(feats: FeaturesList) -> FeaturesList:
+def add_new_label_features_from_existing(feats: FeaturesList,
+                                         alpha_wilson: float,
+                                         wilson_proba_threshold: float
+                                         ) -> FeaturesList:
     def get_wilson_lower_bound(x: int, n: int, alpha: float) -> float:
         """
         Computes the lower bound of the Wilson confident interval.
@@ -113,11 +114,11 @@ def add_new_label_features_from_existing(feats: FeaturesList) -> FeaturesList:
                                  value=get_wilson_lower_bound(
                                      x=sum_dosing_error.value,
                                      n=ct_level_ade_population,
-                                     alpha=ALPHA_WILSON),
+                                     alpha=alpha_wilson),
                                  declared_type=float)
 
     wilson_label = Feature(name="wilson_label",
-                           value=(1 if wilson_lower_bound.value >= WILSON_PROBA_THRESHOLD else 0),
+                           value=(1 if wilson_lower_bound.value >= wilson_proba_threshold else 0),
                            # TODO: Check this with Félicien
                            declared_type=int)
 
@@ -130,14 +131,11 @@ def add_new_label_features_from_existing(feats: FeaturesList) -> FeaturesList:
 
 
 # =========================
-# Main extractor
+# Main extractors
 # =========================
 
-def extract_features_for_study(
+def extract_features_for_training_from_study(
         study: Study,
-        *,
-        canonical_label_cols: Sequence[str],
-        ade_analysis_results_for_study: ADEAnalysisResultForStudy,
 ) -> FeaturesList:
     """
     Build a typed feature list for a single Study.
@@ -146,14 +144,10 @@ def extract_features_for_study(
     """
     feats = FeaturesList()
 
-    # --- Identification ---
     ps = study.protocolSection
-    nctid = ps.identificationModule.nctId if ps and ps.identificationModule else None
-    feats.append(Feature(name="nctId", value=nctid, declared_type=str))
 
     # --- Design ---
     design = ps.designModule if ps and ps.designModule else None
-    feats.append(Feature(name="studyType", value=(design.studyType if design else None), declared_type=StudyType))
 
     # phases: list[Phase] (keep as Enum list; expand later)
     phases_list = list(design.phases) if (design and design.phases) else None
@@ -183,31 +177,17 @@ def extract_features_for_study(
     if std_ages and isinstance(std_ages[0], Enum):  # cautious
         feats.append(Feature(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
 
-    # --- Sponsor & status ---
+    # --- Sponsor ---
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
     lead_name = lead.name if lead else None
     feats.append(Feature(name="leadSponsorName", value=lead_name, declared_type=str))
     feats.append(Feature(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
 
-    status = ps.statusModule if ps and ps.statusModule else None
-    feats.append(Feature(name="overallStatus", value=(status.overallStatus if status else None), declared_type=Status))
-
-    feats.append(Feature(name="completionDate",
-                         value=(getattr(getattr(getattr(status, "completionDateStruct", None), "date", None), "dt",
-                                        None) if status else None),
-                         declared_type=datetime))
-    feats.append(Feature(name="startDate",
-                         value=(getattr(getattr(getattr(status, "startDateStruct", None), "date", None), "dt",
-                                        None) if status else None),
-                         declared_type=datetime))
-
     oversight = ps.oversightModule if ps and ps.oversightModule else None
     feats.append(
         Feature(name="oversightHasDmc", value=(oversight.oversightHasDmc if oversight else None), declared_type=bool))
 
-    feats.append(Feature(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
-                         declared_type=bool))
     # --- Description Module ---
     feats.append(Feature(name="briefSummary",
                          value=ps.descriptionModule.briefSummary,
@@ -268,6 +248,20 @@ def extract_features_for_study(
     feats.append(
         Feature(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
 
+    return feats
+
+
+def extract_labels_from_study(
+        canonical_label_cols: Sequence[str],
+        ade_analysis_results_for_study: ADEAnalysisResultForStudy,
+        alpha_wilson: float,
+        wilson_proba_threshold: float
+) -> FeaturesList:
+    """
+    Extract label-related attributes from a Study.
+    """
+    feats = FeaturesList()
+
     # --- ADE enrichment ---
     # TODO: label-related and meta-related fields will be considered separately.
     ade = ade_analysis_results_for_study
@@ -275,13 +269,49 @@ def extract_features_for_study(
     feats.append(Feature(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
     feats.append(Feature(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
-    # canonical label counts
+    # --- canonical label counts ---
     feats.extend(_label_count_features_from_positive_terms(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
     ))
 
-    # Creating new label-related fields based on existing ones
-    feats = add_new_label_features_from_existing(feats)
+    # --- Creating new label-related fields based on existing ones ---
+    feats = add_new_label_features_from_existing(feats, alpha_wilson, wilson_proba_threshold)
+
+    return feats
+
+
+def extract_metadata_from_study(study: Study) -> FeaturesList:
+    """
+    Extract metadata features from a Study.
+    These are non-training features.
+    """
+    feats = FeaturesList()
+
+    # --- Identification ---
+    ps = study.protocolSection
+    nctid = ps.identificationModule.nctId if ps and ps.identificationModule else None
+    feats.append(Feature(name="nctId", value=nctid, declared_type=str))
+
+    # --- Status ---
+    status = ps.statusModule if ps and ps.statusModule else None
+    feats.append(Feature(name="overallStatus", value=(status.overallStatus if status else None), declared_type=Status))
+
+    feats.append(Feature(name="completionDate",
+                         value=(getattr(getattr(getattr(status, "completionDateStruct", None), "date", None), "dt",
+                                        None) if status else None),
+                         declared_type=datetime))
+    feats.append(Feature(name="startDate",
+                         value=(getattr(getattr(getattr(status, "startDateStruct", None), "date", None), "dt",
+                                        None) if status else None),
+                         declared_type=datetime))
+
+    sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
+    lead = sc.leadSponsor if sc and sc.leadSponsor else None
+    lead_name = lead.name if lead else None
+    feats.append(Feature(name="leadSponsorName", value=lead_name, declared_type=str))
+
+    feats.append(Feature(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
+                         declared_type=bool))
 
     return feats
