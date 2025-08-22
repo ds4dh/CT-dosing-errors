@@ -1,6 +1,5 @@
 from aidose.ctgov.structures import Study, InterventionType, StudyType, Status
 
-
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
 
@@ -8,6 +7,7 @@ from rapidfuzz import fuzz
 
 from typing import Dict, List, Tuple, Any, Sequence, Iterable
 import re
+import requests
 
 
 # =========================
@@ -20,7 +20,8 @@ def trial_study_type_is_interventional(study: Study) -> bool:
     else:
         return False
 
-def trial_status_is_either_completed_or_terminated(study: Study) ->bool:
+
+def trial_status_is_either_completed_or_terminated(study: Study) -> bool:
     if study.protocolSection.statusModule.status == Status.COMPLETED:
         return True
     elif study.protocolSection.statusModule.status == Status.TERMINATED:
@@ -79,6 +80,7 @@ def include_trial_after_sequential_filtering(study: Study) -> bool:
         return False
 
     return True
+
 
 # =========================
 # MedDRA and Fuzzy Matching Utilities
@@ -286,6 +288,31 @@ def has_sap(study: Study) -> bool:       return _has_doc_flag(study, "hasSap")
 def has_icf(study: Study) -> bool:       return _has_doc_flag(study, "hasIcf")
 
 
+def get_large_protocols_pdf_links(study: Study) -> List[str] | None:
+    if not has_protocol(study):
+        return None
+    large_docs = study.documentSection.largeDocumentModule.largeDocs
+    if not large_docs:
+        return None
+    links: List[str] = []
+    nctid = study.protocolSection.identificationModule.nctId
+    subfolder = nctid[-2:]  # Last two characters of NctId
+    for doc in large_docs:
+        filename = doc.filename
+        if isinstance(filename, str) and filename.endswith(".pdf"):
+            link = "https://cdn.clinicaltrials.gov/large-docs/{}/{}/{}".format(subfolder, nctid, filename)
+            try:
+                response = requests.head(link, timeout=5)
+                if response.status_code == 200:
+                    links.append(link)
+                else:
+                    raise RuntimeError(f"URL not found or not accessible: {link} (status {response.status_code})")
+            except requests.RequestException as e:
+                raise RuntimeError(f"Error checking URL {link}: {e}")
+    # TODO: Create tests for this function
+    return links if links else None
+
+
 # =========================
 # Optional parity helpers
 # =========================
@@ -322,6 +349,3 @@ def get_location_details(study: Study) -> List[str]:
             lat if lat is not None else "N/A",
         ])))
     return rows
-
-
-
