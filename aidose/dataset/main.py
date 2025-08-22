@@ -1,3 +1,5 @@
+import pandas as pd
+
 from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
 from aidose.dataset import (
@@ -25,6 +27,8 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 
 from aidose.dataset.feature_extraction import FeaturesList, extract_features_for_study
+
+from aidose.dataset.split import DatasetSplit
 from aidose.dataset.final_processing import add_sum_dosing_error, add_dosing_error_rate, add_wilson_label, \
     dataset_spliting
 
@@ -180,6 +184,19 @@ def main():
         dataset_features.append(features)
 
     # -------------------------------------------------
+    # TODO:
+    # -------------------------------------------------
+
+    # # delete all feature that are unavailable at the beginning of the trial
+    # to_delete = [
+    #     col for col in df_dataset.columns
+    #     if any(col == prefix or col.startswith(prefix + ".") for prefix in LIST_OF_FEATURES_TO_DROP)
+    # ]
+    # df_train = df_train.drop(columns=to_delete)
+    # df_validation = df_validation.drop(columns=to_delete)
+    # df_test = df_test.drop(columns=to_delete)
+
+    # -------------------------------------------------
     # 5)  Dataset creation
     # -----------------------------------
 
@@ -192,6 +209,8 @@ def main():
             return "float64"
         if t is bool:
             return "bool"
+        if t is datetime:
+            return "date32"
         else:
             raise NotImplementedError
 
@@ -212,42 +231,22 @@ def main():
                              ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION), )
     )
 
+    # TODO: Add versioning
+
     # -------------------------------------------------
-    # 5) Finale dataset processing
+    # 6) Dataset splitting
     # -------------------------------------------------
 
-    # convert to df to be more efficient
-    df_dataset = hf_dataset.to_pandas()
-
-    # add the three different labels
-    df_dataset = add_sum_dosing_error(df_dataset)
-    df_dataset = add_dosing_error_rate(df_dataset)
-    df_dataset = add_wilson_label(df_dataset, alpha=ALPHA_WILSON, proba_threshold=WILSON_PROBA_THRESHOLD)
-
-    # dataset splitting
-    df_train, df_validation, df_test = dataset_spliting(df=df_dataset, train_percent=TRAINING_SIZE,
-                                                        validation_percent=VALIDATION_SIZE, test_percent=TEST_SIZE)
-
-    # delete all feature that are unavailable at the beginning of the trial
-    to_delete = [
-        col for col in df_dataset.columns
-        if any(col == prefix or col.startswith(prefix + ".") for prefix in LIST_OF_FEATURES_TO_DROP)
-    ]
-    df_train = df_train.drop(columns=to_delete)
-    df_validation = df_validation.drop(columns=to_delete)
-    df_test = df_test.drop(columns=to_delete)
+    dataset_split_dict = DatasetSplit(
+        train_ratio=TRAINING_SIZE,
+        valid_ratio=VALIDATION_SIZE,
+        test_ratio=TEST_SIZE).split_chronologically(hf_dataset, date_col="completionDate")
 
     # -------------------------------------------------
     # 6) Saving
     # -------------------------------------------------
-    hf_dataset = DatasetDict({
-        "train": Dataset.from_pandas(df_train, preserve_index=False),
-        "validation": Dataset.from_pandas(df_validation, preserve_index=False),
-        "test": Dataset.from_pandas(df_test, preserve_index=False),
-    })
 
-    # TODO: Add versioning
-    hf_dataset.save_to_disk(END_POINT_HF_DATASET_PATH)
+    dataset_split_dict.save_to_disk(END_POINT_HF_DATASET_PATH)
 
 
 if __name__ == '__main__':
