@@ -8,7 +8,8 @@ from aidose.dataset import (
     END_POINT_HF_DATASET_PATH
 )
 
-from aidose.dataset.constants import LIST_OF_FEATURES_TO_DROP, WILSON_PROBA_THRESHOLD, ALPHA_WILSON, TRAINING_SIZE, VALIDATION_SIZE, TEST_SIZE
+from aidose.dataset.constants import LIST_OF_FEATURES_TO_DROP, WILSON_PROBA_THRESHOLD, ALPHA_WILSON, TRAINING_SIZE, \
+    VALIDATION_SIZE, TEST_SIZE
 from aidose.meddra.graph import MedDRA
 from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
@@ -24,7 +25,8 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 
 from aidose.dataset.feature_extraction import FeaturesList, extract_features_for_study
-from aidose.dataset.final_processing import add_sum_dosing_error, add_dosing_error_rate, add_wilson_label, dataset_spliting
+from aidose.dataset.final_processing import add_sum_dosing_error, add_dosing_error_rate, add_wilson_label, \
+    dataset_spliting
 
 from datasets import Dataset, Features, Value, DatasetInfo, DatasetDict, Version
 
@@ -203,11 +205,11 @@ def main():
         [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
         features=schema,
         info=DatasetInfo(features=schema,
-            description="""A dataset to study the ADE risks in clinical trials. 
+                         description="""A dataset to study the ADE risks in clinical trials. 
         
         Based on the studies from `www.clinicaltrials.gov`, downloaded at {}, and the medical dictionary of 
         `www.meddra.org`, with version {}.""".format(
-            ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION), )
+                             ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION), )
     )
 
     # -------------------------------------------------
@@ -223,9 +225,10 @@ def main():
     df_dataset = add_wilson_label(df_dataset, alpha=ALPHA_WILSON, proba_threshold=WILSON_PROBA_THRESHOLD)
 
     # dataset splitting
-    df_train, df_validation, df_test = dataset_spliting(df=df_dataset, train_percent=TRAINING_SIZE, validation_percent=VALIDATION_SIZE, test_percent=TEST_SIZE)
+    df_train, df_validation, df_test = dataset_spliting(df=df_dataset, train_percent=TRAINING_SIZE,
+                                                        validation_percent=VALIDATION_SIZE, test_percent=TEST_SIZE)
 
-     # delete all feature that are unavailable at the beginning of the trial
+    # delete all feature that are unavailable at the beginning of the trial
     to_delete = [
         col for col in df_dataset.columns
         if any(col == prefix or col.startswith(prefix + ".") for prefix in LIST_OF_FEATURES_TO_DROP)
@@ -233,7 +236,6 @@ def main():
     df_train = df_train.drop(columns=to_delete)
     df_validation = df_validation.drop(columns=to_delete)
     df_test = df_test.drop(columns=to_delete)
-
 
     # -------------------------------------------------
     # 6) Saving

@@ -33,7 +33,7 @@ def select_best_label(matches: Sequence[LabelMatch]) -> LabelMatch | None:
 
 
 def term_to_best_label_map_from_positive_terms(
-    positive_terms: Mapping[str, PositiveTermMatch]
+        positive_terms: Mapping[str, PositiveTermMatch]
 ) -> Dict[str, str]:
     """
     Build a mapping: actual ADE term -> best canonical MedDRA label
@@ -54,7 +54,7 @@ def term_to_best_label_map_from_positive_terms(
 
 
 def canonical_labels_from_positive_terms(
-    positive_terms: Mapping[str, PositiveTermMatch]
+        positive_terms: Mapping[str, PositiveTermMatch]
 ) -> List[str]:
     """
     Extract the unique set of best‑match canonical labels for a study.
@@ -70,10 +70,10 @@ def canonical_labels_from_positive_terms(
 
 
 def add_label_count_features_for_study(
-    *,
-    positive_terms: Mapping[str, PositiveTermMatch],
-    canonical_label_columns: Sequence[str],
-    out_features: MutableMapping[str, int],
+        *,
+        positive_terms: Mapping[str, PositiveTermMatch],
+        canonical_label_columns: Sequence[str],
+        out_features: MutableMapping[str, int],
 ) -> None:
     """
     Populate per‑label counts (sum of numAffected) for a single study.
