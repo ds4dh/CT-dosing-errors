@@ -6,13 +6,13 @@ from typing import Any, Dict, List, Type
 
 
 @dataclass(frozen=True)
-class Feature:
+class Attribute:
     """
-    A typed feature with a name.
+    A typed attribute with a name.
 
     Fields:
-      - name: feature name (arbitrary for scalar features; ignored by encoders)
-      - value: the feature's value (may be None for "missing")
+      - name: attribute name (arbitrary for scalar attributes; ignored by encoders)
+      - value: the attribute's value (may be None for "missing")
       - declared_type: a Python type (e.g., str, int, bool, or a concrete Enum subclass)
 
     Validation rules:
@@ -92,17 +92,17 @@ class Feature:
     # -------------------- basic exports --------------------
 
     def to_dict(self) -> Dict[str, Any]:
-        """Return a full dict including the feature name."""
+        """Return a full dict including the attribute name."""
         return {"name": self.name, "value": self.value, "type": self.declared_type}
 
     # -------------------- encodings --------------------
 
-    def as_one_hot(self) -> List[Feature]:
+    def as_one_hot(self) -> List[Attribute]:
         """
-        For **single** Enum value: produce one-hot features of type bool.
+        For **single** Enum value: produce one-hot attributes of type bool.
         Names are "<EnumClass>.<MEMBER>".
 
-        If value is None -> all features have value=None (type=bool).
+        If value is None -> all attributes have value=None (type=bool).
         If value is a list -> TypeError (use as_multi_hot instead).
         """
         if not (isinstance(self.declared_type, type) and issubclass(self.declared_type, Enum)):
@@ -113,27 +113,27 @@ class Feature:
         if isinstance(self.value, list):
             raise TypeError("as_one_hot is only valid for a single Enum value. Use as_multi_hot for lists.")
 
-        feats: List[Feature] = []
+        feats: List[Attribute] = []
         if self.value is None:
             for member in enum_cls:
-                feats.append(Feature(f"{self.name}.{member.name}", None, bool))
+                feats.append(Attribute(f"{self.name}.{member.name}", None, bool))
             return feats
 
         # single Enum (validated in __post_init__)
         for member in enum_cls:
-            feats.append(Feature(f"{self.name}.{member.name}", member is self.value, bool))
+            feats.append(Attribute(f"{self.name}.{member.name}", member is self.value, bool))
         return feats
 
-    def as_multi_hot(self) -> List[Feature]:
+    def as_multi_hot(self) -> List[Attribute]:
         """
         For a single Enum value or a list of Enum values: produce multi-hot counts (type=int).
         Names are "<EnumClass>.<MEMBER>".
 
         Behavior:
-        - If value is None -> all features have value=None (type=int).
+        - If value is None -> all attributes have value=None (type=int).
         - If value is a single Enum -> that member gets 1, others 0.
         - If value is a list:
-            * If empty or all elements are None -> all features have value=None (type=int).
+            * If empty or all elements are None -> all attributes have value=None (type=int).
             * Otherwise -> counts reflect occurrences (duplicates allowed).
         """
 
@@ -141,18 +141,18 @@ class Feature:
             raise TypeError("as_multi_hot requires declared_type to be a concrete Enum subclass.")
 
         enum_cls = self.declared_type
-        feats: list[Feature] = []
+        feats: list[Attribute] = []
 
         # value is None -> all None
         if self.value is None:
             for member in enum_cls:
-                feats.append(Feature(f"{self.name}.{member.name}", None, int))
+                feats.append(Attribute(f"{self.name}.{member.name}", None, int))
             return feats
 
         # single Enum -> 1 for that member, 0 for others
         if isinstance(self.value, self.declared_type):
             for member in enum_cls:
-                feats.append(Feature(f"{self.name}.{member.name}", 1 if member is self.value else 0, int))
+                feats.append(Attribute(f"{self.name}.{member.name}", 1 if member is self.value else 0, int))
             return feats
 
         # list case
@@ -160,7 +160,7 @@ class Feature:
             # if empty or all None -> treat as unknown => all None
             if len(self.value) == 0 or all(elem is None for elem in self.value):
                 for member in enum_cls:
-                    feats.append(Feature(f"{self.name}.{member.name}", None, int))
+                    feats.append(Attribute(f"{self.name}.{member.name}", None, int))
                 return feats
 
             # otherwise we already validated no Nones and all are correct Enum members
@@ -168,16 +168,16 @@ class Feature:
             for elem in self.value:
                 counts[elem] = counts.get(elem, 0) + 1
             for member in enum_cls:
-                feats.append(Feature(f"{self.name}.{member.name}", counts.get(member, 0), int))
+                feats.append(Attribute(f"{self.name}.{member.name}", counts.get(member, 0), int))
             return feats
 
         # should be unreachable due to __post_init__
         raise TypeError("Invalid enum value state for multi-hot.")
 
 
-class FeaturesList(list[Feature]):
-    def expand_enums(self) -> FeaturesList:
-        expanded = FeaturesList()
+class AttributesList(list[Attribute]):
+    def expand_enums(self) -> AttributesList:
+        expanded = AttributesList()
         for f in self:
             if issubclass(f.declared_type, Enum):
                 if isinstance(f.value, list):
@@ -189,13 +189,13 @@ class FeaturesList(list[Feature]):
         return expanded
 
     def get_values(self) -> List:
-        """Return a list of all feature values in order."""
+        """Return a list of all attribute values in order."""
         return [f.value for f in self]
 
     def get_types(self) -> List[type]:
-        """Return a list of declared types for all features in order."""
+        """Return a list of declared types for all attributes in order."""
         return [f.declared_type for f in self]
 
     def get_names(self) -> List[str]:
-        """Return a list of feature names in order."""
+        """Return a list of attribute names in order."""
         return [f.name for f in self]

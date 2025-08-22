@@ -2,7 +2,7 @@ import unittest
 from enum import Enum
 from typing import List, Dict, Any
 
-from aidose.dataset.feature import Feature, FeaturesList
+from aidose.dataset.attribute import Attribute, AttributesList
 
 
 class Phase(Enum):
@@ -19,7 +19,7 @@ class Color(Enum):
 
 class FeatureUnitTest(unittest.TestCase):
     def test_basic_ok(self):
-        f = Feature(name="title", value="abc", declared_type=str)
+        f = Attribute(name="title", value="abc", declared_type=str)
         self.assertEqual(f.name, "title")
         self.assertEqual(f.value, "abc")
         self.assertIs(f.declared_type, str)
@@ -30,7 +30,7 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertIs(d["type"], str)
 
     def test_none_allowed(self):
-        f = Feature(name="enrollmentCount", value=None, declared_type=int)
+        f = Attribute(name="enrollmentCount", value=None, declared_type=int)
         self.assertIsNone(f.value)
         self.assertIs(f.declared_type, int)
 
@@ -41,31 +41,31 @@ class FeatureUnitTest(unittest.TestCase):
 
     def test_type_mismatch(self):
         with self.assertRaises(TypeError):
-            Feature(name="count", value="not-int", declared_type=int)
+            Attribute(name="count", value="not-int", declared_type=int)
 
     def test_type_argument_must_be_type(self):
         with self.assertRaises(TypeError):
-            Feature(name="value", value="abc", declared_type="not_a_type")  # type: ignore[arg-type]
+            Attribute(name="value", value="abc", declared_type="not_a_type")  # type: ignore[arg-type]
 
     def test_bool_strictness(self):
-        Feature(name="flag", value=True, declared_type=bool)  # ok
+        Attribute(name="flag", value=True, declared_type=bool)  # ok
         with self.assertRaises(TypeError):
-            Feature(name="flag", value=1, declared_type=bool)
+            Attribute(name="flag", value=1, declared_type=bool)
 
     def test_enum_basic(self):
-        f = Feature(name="phase_raw", value=Phase.P2, declared_type=Phase)
+        f = Attribute(name="phase_raw", value=Phase.P2, declared_type=Phase)
         self.assertEqual(f.value, Phase.P2)
         self.assertIs(f.declared_type, Phase)
 
     def test_enum_with_base_declared_type(self):
         with self.assertRaises(TypeError):
-            Feature(name="phase_raw", value=Phase.P3, declared_type=Enum)
+            Attribute(name="phase_raw", value=Phase.P3, declared_type=Enum)
 
     # ---------- one-hot (single Enum) ----------
 
     def test_enum_one_hot_features(self):
-        f = Feature(name="phase_raw", value=Phase.P2, declared_type=Phase)
-        feats: List[Feature] = f.as_one_hot()
+        f = Attribute(name="phase_raw", value=Phase.P2, declared_type=Phase)
+        feats: List[Attribute] = f.as_one_hot()
 
         self.assertEqual([feat.name for feat in feats], ["phase_raw.P1", "phase_raw.P2", "phase_raw.P3"])
         self.assertTrue(all(feat.declared_type is bool for feat in feats))
@@ -77,7 +77,7 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertEqual([d["value"] for d in dicts], [False, True, False])
 
     def test_enum_one_hot_none_value(self):
-        f = Feature(name="phase_raw", value=None, declared_type=Phase)
+        f = Attribute(name="phase_raw", value=None, declared_type=Phase)
         feats = f.as_one_hot()
 
         self.assertEqual([feat.name for feat in feats], ["phase_raw.P1", "phase_raw.P2", "phase_raw.P3"])
@@ -85,14 +85,14 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertEqual([feat.value for feat in feats], [None, None, None])
 
     def test_as_one_hot_rejects_list_value(self):
-        f = Feature(name="phase_list", value=[Phase.P1, Phase.P2], declared_type=Phase)
+        f = Attribute(name="phase_list", value=[Phase.P1, Phase.P2], declared_type=Phase)
         with self.assertRaises(TypeError):
             f.as_one_hot()
 
     # ---------- multi-hot (single enum or list of enums) ----------
 
     def test_multi_hot_single_enum(self):
-        f = Feature(name="phase_list", value=Phase.P1, declared_type=Phase)
+        f = Attribute(name="phase_list", value=Phase.P1, declared_type=Phase)
         feats = f.as_multi_hot()
 
         self.assertEqual([feat.name for feat in feats], ["phase_list.P1", "phase_list.P2", "phase_list.P3"])
@@ -100,7 +100,7 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertEqual([feat.value for feat in feats], [1, 0, 0])
 
     def test_multi_hot_none_value(self):
-        f = Feature(name="phase_list", value=None, declared_type=Phase)
+        f = Attribute(name="phase_list", value=None, declared_type=Phase)
         feats = f.as_multi_hot()
 
         self.assertEqual([feat.name for feat in feats], ["phase_list.P1", "phase_list.P2", "phase_list.P3"])
@@ -108,14 +108,14 @@ class FeatureUnitTest(unittest.TestCase):
         self.assertEqual([feat.value for feat in feats], [None, None, None])
 
     def test_multi_hot_list_values(self):
-        f = Feature(name="phase_list", value=[Phase.P1, Phase.P3], declared_type=Phase)
+        f = Attribute(name="phase_list", value=[Phase.P1, Phase.P3], declared_type=Phase)
         feats = f.as_multi_hot()
 
         self.assertEqual([feat.name for feat in feats], ["phase_list.P1", "phase_list.P2", "phase_list.P3"])
         self.assertEqual([feat.value for feat in feats], [1, 0, 1])
 
     def test_multi_hot_list_with_duplicates(self):
-        f = Feature(name="phase_list", value=[Phase.P2, Phase.P2, Phase.P3], declared_type=Phase)
+        f = Attribute(name="phase_list", value=[Phase.P2, Phase.P2, Phase.P3], declared_type=Phase)
         feats = f.as_multi_hot()
 
         self.assertEqual([feat.value for feat in feats], [0, 2, 1])
@@ -125,10 +125,10 @@ class FeatureUnitTest(unittest.TestCase):
             X = "x"
 
         with self.assertRaises(TypeError):
-            Feature(name="bad_list", value=[Phase.P1, Other.X], declared_type=Phase)  # mixed enum types not allowed
+            Attribute(name="bad_list", value=[Phase.P1, Other.X], declared_type=Phase)  # mixed enum types not allowed
 
     def test_enum_list_all_none_allowed(self):
-        f = Feature(name="phase_list", value=[None, None], declared_type=Phase)
+        f = Attribute(name="phase_list", value=[None, None], declared_type=Phase)
         feats = f.as_multi_hot()
         self.assertEqual([feat.name for feat in feats], ["phase_list.P1", "phase_list.P2", "phase_list.P3"])
         self.assertTrue(all(feat.declared_type is int for feat in feats))
@@ -136,18 +136,18 @@ class FeatureUnitTest(unittest.TestCase):
 
     def test_enum_list_mixed_none_and_members_rejected(self):
         with self.assertRaises(TypeError):
-            Feature(name="phase_list", value=[Phase.P1, None], declared_type=Phase)
+            Attribute(name="phase_list", value=[Phase.P1, None], declared_type=Phase)
 
     def test_enum_list_empty_treated_as_all_none(self):
-        f = Feature(name="phase_list", value=[], declared_type=Phase)
+        f = Attribute(name="phase_list", value=[], declared_type=Phase)
         feats = f.as_multi_hot()
         self.assertEqual([feat.value for feat in feats], [None, None, None])
 
 
 class FeaturesListUnitTest(unittest.TestCase):
     def test_non_enum_feature_passthrough(self):
-        f = Feature(name="enrollmentCount", value=123, declared_type=int)
-        feats = FeaturesList([f])
+        f = Attribute(name="enrollmentCount", value=123, declared_type=int)
+        feats = AttributesList([f])
         expanded = feats.expand_enums()
 
         self.assertEqual(len(expanded), 1)
@@ -157,11 +157,11 @@ class FeaturesListUnitTest(unittest.TestCase):
         self.assertIs(expanded[0].declared_type, int)
 
     def test_mixed_features(self):
-        base = Feature(name="enrollmentCount", value=100, declared_type=int)
-        single_enum = Feature(name="phase", value=Phase.P1, declared_type=Phase)
-        list_enum = Feature(name="phases", value=[Phase.P2, Phase.P3], declared_type=Phase)
+        base = Attribute(name="enrollmentCount", value=100, declared_type=int)
+        single_enum = Attribute(name="phase", value=Phase.P1, declared_type=Phase)
+        list_enum = Attribute(name="phases", value=[Phase.P2, Phase.P3], declared_type=Phase)
 
-        feats = FeaturesList([base, single_enum, list_enum])
+        feats = AttributesList([base, single_enum, list_enum])
         expanded = feats.expand_enums()
 
         # int stays 1 feature, single enum -> 3, list enum -> 3  ==> total 7
@@ -188,10 +188,10 @@ class FeaturesListUnitTest(unittest.TestCase):
         self.assertIs(cells["phases.P3"]["type"], int)
 
     def test_getters_on_plain_features(self):
-        feats = FeaturesList([
-            Feature("age", 42, int),
-            Feature("title", "Study A", str),
-            Feature("flag", True, bool),
+        feats = AttributesList([
+            Attribute("age", 42, int),
+            Attribute("title", "Study A", str),
+            Attribute("flag", True, bool),
         ])
 
         self.assertEqual(feats.get_names(), ["age", "title", "flag"])
@@ -199,9 +199,9 @@ class FeaturesListUnitTest(unittest.TestCase):
         self.assertEqual(feats.get_types(), [int, str, bool])
 
     def test_expand_enums_one_hot_then_getters(self):
-        feats = FeaturesList([
-            Feature("color", Color.GREEN, Color),
-            Feature("count", 7, int),
+        feats = AttributesList([
+            Attribute("color", Color.GREEN, Color),
+            Attribute("count", 7, int),
         ])
         expanded = feats.expand_enums()
 
@@ -217,9 +217,9 @@ class FeaturesListUnitTest(unittest.TestCase):
         self.assertEqual(expanded.get_types()[3], int)
 
     def test_expand_enums_none_one_hot_then_getters(self):
-        feats = FeaturesList([
-            Feature("color", None, Color),  # missing enum -> all None one-hot
-            Feature("flag", False, bool),
+        feats = AttributesList([
+            Attribute("color", None, Color),  # missing enum -> all None one-hot
+            Attribute("flag", False, bool),
         ])
         expanded = feats.expand_enums()
 
@@ -229,9 +229,9 @@ class FeaturesListUnitTest(unittest.TestCase):
         self.assertEqual(expanded.get_types()[3], bool)
 
     def test_expand_enums_multi_hot_then_getters(self):
-        feats = FeaturesList([
-            Feature("colors", [Color.RED, Color.BLUE, Color.BLUE], Color),
-            Feature("label", "x", str),
+        feats = AttributesList([
+            Attribute("colors", [Color.RED, Color.BLUE, Color.BLUE], Color),
+            Attribute("label", "x", str),
         ])
         expanded = feats.expand_enums()
 
@@ -244,10 +244,10 @@ class FeaturesListUnitTest(unittest.TestCase):
     def test_expand_enums_mixed_list_in_order(self):
         # Ensure ordering is preserved: enum expansion first (in place of original),
         # then subsequent non-enum features in original order.
-        feats = FeaturesList([
-            Feature("colors", [Color.GREEN], Color),
-            Feature("age", 30, int),
-            Feature("primary", True, bool),
+        feats = AttributesList([
+            Attribute("colors", [Color.GREEN], Color),
+            Attribute("age", 30, int),
+            Attribute("primary", True, bool),
         ])
         expanded = feats.expand_enums()
 

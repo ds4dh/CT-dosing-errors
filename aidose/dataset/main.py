@@ -26,7 +26,7 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 
-from aidose.dataset.feature import FeaturesList
+from aidose.dataset.attribute import AttributesList
 from aidose.dataset.feature_extraction import (extract_features_for_training_from_study,
                                                extract_metadata_from_study,
                                                extract_labels_from_study)
@@ -171,9 +171,9 @@ def main():
     # -------------------------------------------------
     # 4) Features, metadata and label extraction (per study, using ADE enrichment)
     # -------------------------------------------------
-    dataset_features: List[FeaturesList] = []
-    dataset_metadata: List[FeaturesList] = []
-    dataset_labels: List[FeaturesList] = []
+    dataset_features: List[AttributesList] = []
+    dataset_metadata: List[AttributesList] = []
+    dataset_labels: List[AttributesList] = []
 
     for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
         study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{ade_analysis.nctid}.json")

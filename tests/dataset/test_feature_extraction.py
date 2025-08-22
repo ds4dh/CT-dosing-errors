@@ -10,10 +10,10 @@ from aidose.dataset.feature_extraction import (
     get_location_details,
     _total_ade_population,  # intentionally testing internal helper
     _label_count_features_from_positive_terms,
-    extract_features_for_study,
+    extract_features_for_training_from_study,
 )
 from aidose.dataset.utils import get_flow_group_descriptions
-from aidose.dataset.feature import Feature, FeaturesList
+from aidose.dataset.attribute import Attribute, AttributesList
 from aidose.dataset.ade import (
     ADEAnalysisResultForStudy,
     ADEGroupAggregate,
@@ -221,7 +221,7 @@ class FeaturesExtractorTestCase(unittest.TestCase):
             positive_terms={},  # no positives
         )
 
-        feats: FeaturesList = extract_features_for_study(
+        feats: AttributesList = extract_features_for_training_from_study(
             study,
             canonical_label_cols=["Overdose", "Seizure"],
             ade_analysis_results_for_study=ade_res,
