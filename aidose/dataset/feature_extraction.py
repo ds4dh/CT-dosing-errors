@@ -16,7 +16,9 @@ from .utils import (has_protocol,
                     has_icf,
                     get_protocol_arm_groups,
                     get_protocol_interventions,
-                    get_location_details)
+                    get_location_details,
+                    get_study_completion_date)
+
 from .attribute import Attribute, AttributesList
 from .ade import ADEAnalysisResultForStudy
 from .ade_labeling import term_to_best_label_map_from_positive_terms
@@ -106,15 +108,15 @@ def add_new_label_features_from_existing(feats: AttributesList,
 
     dosing_error_rate = Attribute(name="dosing_error_rate",
                                   value=(
-                                    sum_dosing_error.value / ct_level_ade_population
-                                    if ct_level_ade_population else None),
+                                      sum_dosing_error.value / ct_level_ade_population
+                                      if ct_level_ade_population else None),
                                   declared_type=float)
 
     wilson_lower_bound = Attribute(name="wilson_lower_bound",
                                    value=get_wilson_lower_bound(
-                                     x=sum_dosing_error.value,
-                                     n=ct_level_ade_population,
-                                     alpha=alpha_wilson),
+                                       x=sum_dosing_error.value,
+                                       n=ct_level_ade_population,
+                                       alpha=alpha_wilson),
                                    declared_type=float)
 
     wilson_label = Attribute(name="wilson_label",
@@ -162,7 +164,8 @@ def extract_features_for_training_from_study(
     feats.append(
         Attribute(name="interventionModel", value=(d_info.interventionModel if d_info else None), declared_type=str))
     feats.append(
-        Attribute(name="primaryPurpose", value=(d_info.primaryPurpose if d_info else None), declared_type=PrimaryPurpose))
+        Attribute(name="primaryPurpose", value=(d_info.primaryPurpose if d_info else None),
+                  declared_type=PrimaryPurpose))
 
     masking_val = d_info.maskingInfo.masking if d_info and d_info.maskingInfo else None
     feats.append(Attribute(name="masking", value=masking_val, declared_type=Masking))
@@ -219,7 +222,8 @@ def extract_features_for_training_from_study(
     arm_descriptions = [getattr(arm, "description", None) for arm in arms]
     feats.append(Attribute(name="armDescriptions",
                            value=" ".join(
-                             f"arm {i + 1}: {s}" for i, s in enumerate(arm_descriptions)) if arm_descriptions else None,
+                               f"arm {i + 1}: {s}" for i, s in
+                               enumerate(arm_descriptions)) if arm_descriptions else None,
                            declared_type=str))
     arm_group_types = [getattr(arm, "type", None) for arm in arms]
     feats.append(Attribute(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
@@ -234,12 +238,12 @@ def extract_features_for_training_from_study(
     i_descriptions = [getattr(itv, "description", None) for itv in interventions]
     feats.append(Attribute(name="interventionDescriptions",
                            value=" ".join(f"intervention {i + 1}: {s}" for i, s in
-                                        enumerate(i_descriptions)) if i_descriptions else None,
+                                          enumerate(i_descriptions)) if i_descriptions else None,
                            declared_type=str))
     i_names = [getattr(itv, "name", None) for itv in interventions]
     feats.append(Attribute(name="interventionNames",
                            value=" ".join(
-                             f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
+                               f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
                            declared_type=str))
 
     # --- Locations ---
@@ -294,16 +298,18 @@ def extract_metadata_from_study(study: Study) -> AttributesList:
     feats.append(Attribute(name="nctId", value=nctid, declared_type=str))
 
     # --- Status ---
-    status = ps.statusModule if ps and ps.statusModule else None
-    feats.append(Attribute(name="overallStatus", value=(status.overallStatus if status else None), declared_type=Status))
+    sm = ps.statusModule
+    feats.append(Attribute(name="overallStatus", value=sm.overallStatus, declared_type=Status))
+
+    completion_date = get_study_completion_date(sm)
 
     feats.append(Attribute(name="completionDate",
-                           value=(getattr(getattr(getattr(status, "completionDateStruct", None), "date", None), "dt",
-                                        None) if status else None),
+                           value=completion_date,
                            declared_type=datetime))
+
     feats.append(Attribute(name="startDate",
-                           value=(getattr(getattr(getattr(status, "startDateStruct", None), "date", None), "dt",
-                                        None) if status else None),
+                           value=(getattr(getattr(getattr(sm, "startDateStruct", None), "date", None), "dt",
+                                          None)),
                            declared_type=datetime))
 
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None

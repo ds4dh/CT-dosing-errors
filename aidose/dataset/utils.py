@@ -376,6 +376,7 @@ def get_study_completion_date(status_module: StatusModule) -> datetime | None:
     if completion_date_struct:
         return completion_date_struct.date.dt
     else:
+        # TODO: Is this logic correct?
         primary_completion_date_struct = getattr(status_module, "primaryCompletionDateStruct", None)
         if primary_completion_date_struct:
             return primary_completion_date_struct.date.dt
