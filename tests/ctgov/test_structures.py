@@ -48,13 +48,10 @@ class CTGOVEntireRegistryParsingAsStudyObjectsIntegrationTest(unittest.TestCase)
 
     def test_study_parsing_with_pydantic_for_entire_registry(self):
         """Test that all available study JSON files can be parsed as Study objects."""
-        parsing_errors: List[tuple[str, str]] = []
         for nctid in tqdm.tqdm(self.nctids_list, desc="Testing all studies for successful parsing .."):
             json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
             with open(json_path, 'r') as f:
-                study_data = json.load(f)
-
-            Study.model_validate(study_data)
+                Study.model_validate_json(f.read())
 
     def test_available_studies_not_unusually_incomplete(self):
         self.assertTrue(
