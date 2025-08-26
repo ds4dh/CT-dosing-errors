@@ -34,7 +34,7 @@ from aidose.dataset.feature_extraction import (extract_features_for_training_fro
                                                extract_metadata_from_study,
                                                extract_labels_from_study)
 
-from aidose.dataset.split import DatasetSplit
+from aidose.dataset.split import ListSplitter
 
 from datasets import Dataset, Features, Value, DatasetInfo, DatasetDict, Version
 
@@ -195,10 +195,28 @@ def main():
         dataset_metadata.append(metadata)
         dataset_labels.append(labels)
 
-    # TODO: Maybe doing the splitting here and before the `dataset` creation?
+    # -------------------------------------------------
+    # 5) Dataset splitting
+    # -------------------------------------------------
+
+    splitter = ListSplitter(split_proportions=(TRAINING_SIZE, VALIDATION_SIZE, TEST_SIZE))
+    train_idx, valid_idx, test_idx = splitter.get_split_indices(
+        data=dataset_metadata,
+        key=ListSplitter.chronological_key(dataset_metadata, "completionDate")
+    )
+
+    dataset_features_train: List[AttributesList] = [dataset_features[i] for i in train_idx]
+    dataset_metadata_train: List[AttributesList] = [dataset_metadata[i] for i in train_idx]
+    dataset_labels_train: List[AttributesList] = [dataset_labels[i] for i in train_idx]
+    dataset_features_valid: List[AttributesList] = [dataset_features[i] for i in valid_idx]
+    dataset_metadata_valid: List[AttributesList] = [dataset_metadata[i] for i in valid_idx]
+    dataset_labels_valid: List[AttributesList] = [dataset_labels[i] for i in valid_idx]
+    dataset_features_test: List[AttributesList] = [dataset_features[i] for i in test_idx]
+    dataset_metadata_test: List[AttributesList] = [dataset_metadata[i] for i in test_idx]
+    dataset_labels_test: List[AttributesList] = [dataset_labels[i] for i in test_idx]
 
     # -------------------------------------------------
-    # 5)  Dataset creation
+    # 6)  Dataset creation
     # -----------------------------------
 
     def hf_type_map(t: type) -> str:
@@ -233,38 +251,51 @@ def main():
         "labels": labels_schema,
     })
 
-    hf_dataset = Dataset.from_dict(
+    hf_dataset_train = Dataset.from_dict(
         {
-            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features],
-            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata],
-            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels],
+            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_train],
+            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata_train],
+            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_train],
         },
-
         features=schema,
-        info=DatasetInfo(features=schema,
-                         description="""A dataset to study the ADE risks in clinical trials. 
+    )
+    hf_dataset_valid = Dataset.from_dict(
+        {
+            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_valid],
+            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata_valid],
+            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_valid],
+        },
+        features=schema,
+    )
+    hf_dataset_test = Dataset.from_dict(
+        {
+            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_test],
+            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata_test],
+            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_test],
+        },
+        features=schema,
+    )
+
+    hf_dataset_dict = DatasetDict({
+        "train": hf_dataset_train,
+        "validation": hf_dataset_valid,
+        "test": hf_dataset_test})
+
+    hf_dataset_dict.info = DatasetInfo(
+        features=schema,
+        description="""A dataset to study the ADE risks in clinical trials. 
         
         Based on the studies from `www.clinicaltrials.gov`, downloaded at {}, and the medical dictionary of 
         `www.meddra.org`, with version {}.""".format(
-                             ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION), )
+            ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION)
     )
 
     # TODO: Add versioning
-
     # -------------------------------------------------
-    # 6) Dataset splitting
-    # -------------------------------------------------
-
-    dataset_split_dict = DatasetSplit(
-        train_ratio=TRAINING_SIZE,
-        valid_ratio=VALIDATION_SIZE,
-        test_ratio=TEST_SIZE).split_chronologically(hf_dataset, date_path="metadata.completionDate")
-
-    # -------------------------------------------------
-    # 6) Saving
+    # 7) Saving
     # -------------------------------------------------
 
-    dataset_split_dict.save_to_disk(END_POINT_HF_DATASET_PATH)
+    hf_dataset_dict.save_to_disk(END_POINT_HF_DATASET_PATH)
 
 
 if __name__ == '__main__':
