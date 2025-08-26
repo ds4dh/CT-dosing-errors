@@ -1,4 +1,4 @@
-from aidose.ctgov.structures import Study, InterventionType, StudyType, Status
+from aidose.ctgov.structures import Study, InterventionType, StudyType, Status, StatusModule
 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
@@ -8,6 +8,7 @@ from rapidfuzz import fuzz
 from typing import Dict, List, Tuple, Any, Sequence, Iterable
 import re
 import requests
+from datetime import datetime
 
 
 # =========================
@@ -25,12 +26,22 @@ def trial_study_type_is_interventional(study: Study) -> bool:
 
 
 def trial_status_is_either_completed_or_terminated(study: Study) -> bool:
-    if study.protocolSection.statusModule.status == Status.COMPLETED:
+    if study.protocolSection.statusModule.overallStatus == Status.COMPLETED:
         return True
-    elif study.protocolSection.statusModule.status == Status.TERMINATED:
+    elif study.protocolSection.statusModule.overallStatus == Status.TERMINATED:
         return True
     else:
         return False
+
+
+def trial_study_has_a_completion_date(study: Study) -> bool:
+    # Sometimes a trial is completed but has no completion date ! Example: NCT00939705
+    sm = study.protocolSection.statusModule
+    completion_date = get_study_completion_date(sm)
+    if isinstance(completion_date, datetime):
+        return True
+    return False
+
 
 
 def trial_has_at_least_one_drug_intervention(study: Study) -> bool:
@@ -65,15 +76,18 @@ def include_trial_after_sequential_filtering(study: Study) -> bool:
     Sequentially filter trials based on:
     1. Study type must be "Interventional".
     2. Status must be either "Completed" or "Terminated".
-    3. At least one intervention must be of type "DRUG".
-    4. Presence of a 'resultsSection'.
-    5. Presence of an 'adverseEventsModule' in the 'resultsSection'.
+    3. Study must have a completion date.
+    4. At least one intervention must be of type "DRUG".
+    5. Presence of a 'resultsSection'.
+    6. Presence of an 'adverseEventsModule' in the 'resultsSection'.
 
     Returns True if the trial passes all criteria.
     """
     if not trial_study_type_is_interventional(study):
         return False
     if not trial_status_is_either_completed_or_terminated(study):
+        return False
+    if not trial_study_has_a_completion_date(study):
         return False
     if not trial_has_at_least_one_drug_intervention(study):
         return False
@@ -352,3 +366,19 @@ def get_location_details(study: Study) -> List[str]:
             lat if lat is not None else "N/A",
         ])))
     return rows
+
+
+# =========================
+# Date-related helpers
+# =========================
+def get_study_completion_date(status_module: StatusModule) -> datetime | None:
+    completion_date_struct = getattr(status_module, "completionDateStruct", None)
+    if completion_date_struct:
+        return completion_date_struct.date.dt
+    else:
+        primary_completion_date_struct = getattr(status_module, "primaryCompletionDateStruct", None)
+        if primary_completion_date_struct:
+            return primary_completion_date_struct.date.dt
+
+    return None
+
