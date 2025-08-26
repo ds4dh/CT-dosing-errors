@@ -46,6 +46,13 @@ import tqdm
 from datetime import datetime
 
 
+def parse_study_by_nctid_from_json_path(nctid: str) -> Study:
+    json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+    with open(json_path, "r", encoding="utf-8") as f:
+        study = Study.model_validate_json(f.read())
+    return study
+
+
 def main():
     # -----------------------------
     # 0) MedDRA positive terms
@@ -86,13 +93,7 @@ def main():
             nctids_list_all = [line.strip() for line in f if line.strip()]
 
         for nct_id in tqdm.tqdm(nctids_list_all, desc="Parsing trials and filtering them."):
-            json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
-
-            # specify encoding type to be compatible with windows machine
-            with open(json_path, 'r', encoding='utf-8') as f:
-                study_data = json.load(f)
-
-            study = Study(**study_data)
+            study = parse_study_by_nctid_from_json_path(nct_id)
 
             if include_trial_after_sequential_filtering(study):
                 nctids_list_filtered.append(nct_id)
@@ -121,9 +122,7 @@ def main():
         normalized_ade_processing_errors: Dict[str, int] = {}
 
         for nctid in tqdm.tqdm(nctids_list_filtered, desc="ADE matching per study"):
-            study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
-            with open(study_path, "r", encoding="utf-8") as f:
-                study = Study.model_validate_json(f.read())
+            study = parse_study_by_nctid_from_json_path(nctid)
 
             ade_analysis_result, ade_error = process_study_for_ade_risks(study, meddra_labels)
 
@@ -177,9 +176,7 @@ def main():
     dataset_labels: List[AttributesList] = []
 
     for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
-        study_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{ade_analysis.nctid}.json")
-        with open(study_path, "r", encoding="utf-8") as f:
-            study = Study.model_validate_json(f.read())
+        study = parse_study_by_nctid_from_json_path(ade_analysis.nctid)
 
         features = extract_features_for_training_from_study(study)
         metadata = extract_metadata_from_study(study)
