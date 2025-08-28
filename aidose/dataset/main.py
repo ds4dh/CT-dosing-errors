@@ -7,7 +7,8 @@ from aidose.dataset import (
     MEDDRA_HLGT_CODES_LITERAL,
     CTGOV_NCTIDS_LIST_FILTERED_PATH,
     ADE_ANALYSIS_RESULTS_PATH,
-    END_POINT_HF_DATASET_PATH
+    END_POINT_HF_DATASET_PATH,
+    CTGOV_KNOWLEDGE_CUTOFF_DATE
 )
 
 from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
@@ -20,7 +21,7 @@ from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
 
 from aidose.ctgov.structures import Study
-import aidose.ctgov.api_download as api_download
+from aidose.ctgov import download_registry_from_api
 
 from aidose.dataset.utils import include_trial_after_sequential_filtering
 
@@ -79,7 +80,7 @@ def main():
             os.path.exists(CTGOV_DATASET_RAW_PATH) and
             os.path.exists(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"))
     ):
-        api_download.main()
+        download_registry_from_api(CTGOV_KNOWLEDGE_CUTOFF_DATE)
     with open(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"), "r", encoding="utf-8") as f:
         try:
             ctgov_download_timestamp = datetime.strptime(
@@ -290,7 +291,7 @@ def main():
             ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION)
     )
 
-    # TODO: Add versioning
+    # TODO: Add versioning, knowledge cutoff date
     # -------------------------------------------------
     # 7) Saving
     # -------------------------------------------------
