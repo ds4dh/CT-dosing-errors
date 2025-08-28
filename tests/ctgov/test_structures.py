@@ -1,7 +1,8 @@
 from aidose.ctgov.structures import StrEnumWithNumericDeprecated
 from aidose.ctgov.structures import Study
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
-import aidose.ctgov.api_download as api_download
+from aidose.ctgov.main import download_registry_from_api
+from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
 import unittest
 from pydantic import ValidationError
@@ -41,7 +42,7 @@ class CTGOVEntireRegistryParsingAsStudyObjectsIntegrationTest(unittest.TestCase)
     @classmethod
     def setUpClass(cls):
         if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and os.path.exists(CTGOV_DATASET_RAW_PATH)):
-            api_download.main()
+            download_registry_from_api()
 
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r') as f:
             cls.nctids_list = [line.strip() for line in f if line.strip()]
@@ -49,7 +50,7 @@ class CTGOVEntireRegistryParsingAsStudyObjectsIntegrationTest(unittest.TestCase)
     def test_study_parsing_with_pydantic_for_entire_registry(self):
         """Test that all available study JSON files can be parsed as Study objects."""
         for nctid in tqdm.tqdm(self.nctids_list, desc="Testing all studies for successful parsing .."):
-            json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+            json_path = get_study_path_by_nctid_and_raw_dir(nctid, CTGOV_DATASET_RAW_PATH)
             with open(json_path, 'r') as f:
                 Study.model_validate_json(f.read())
 

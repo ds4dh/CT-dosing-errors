@@ -1,15 +1,17 @@
 from aidose.dataset.utils import include_trial_after_sequential_filtering
 from aidose.dataset.utils import sanitize_number_from_string
 from aidose.dataset.utils import match_terms_fuzzy
+from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
 from aidose.ctgov.structures import Study
 
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
-import aidose.ctgov.api_download as api_download
+from aidose.ctgov import download_registry_from_api
 
 from typing import Dict, Any
 
 import unittest
+import tqdm
 import os
 import json
 
@@ -19,7 +21,7 @@ class CTGovSequentialFilteringTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and os.path.exists(CTGOV_DATASET_RAW_PATH)):
-            api_download.main()
+            download_registry_from_api()
 
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r') as f:
             cls.nctids_list = [line.strip() for line in f if line.strip()]
@@ -29,13 +31,11 @@ class CTGovSequentialFilteringTest(unittest.TestCase):
         num_included_trials = 0
         num_excluded_trials = 0
 
-        for idx, nct_id in enumerate(self.nctids_list):
-            json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nct_id}.json")
+        for nctid in tqdm.tqdm(self.nctids_list, desc="Parsing all studies and checking filtering .."):
+            json_path = get_study_path_by_nctid_and_raw_dir(nctid, CTGOV_DATASET_RAW_PATH)
 
             with open(json_path, 'r') as f:
-                study_data = json.load(f)
-
-            study = Study(**study_data)
+                study = Study.model_validate_json(f.read())
 
             if include_trial_after_sequential_filtering(study):
                 num_included_trials += 1
