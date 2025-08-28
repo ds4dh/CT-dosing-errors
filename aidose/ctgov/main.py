@@ -2,6 +2,7 @@ from aidose.ctgov.utils import (
     fetch_all_study_nctids_from_api_before_cutoff_date,
     download_all_studies_as_zip,
     unzip_as_separate_jsons_and_delete_zip_file,
+    find_files_with_extension_recursively
 )
 from aidose.ctgov import (CTGOV_DATASET_RAW_PATH,
                           CTGOV_DATASET_PATH,
@@ -39,13 +40,14 @@ def fetch_study_json_with_retries(nct_id: str) -> dict:
 
     raise RuntimeError(f"Too many retries (429): {nct_id}")
 
-def delete_studies_downloaded_after_cutoff(nctids_list_valid: List[str]) -> None:
-    nctids_list_all_existing = [study.split(".json")[0] for study in os.listdir(CTGOV_DATASET_RAW_PATH) if
-                                study.endswith(".json")]
-    for nctid in nctids_list_all_existing:
-        if nctid not in nctids_list_valid:
-            os.remove(os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json"))
 
+def delete_studies_downloaded_after_cutoff(nctids_list_valid: List[str]) -> None:
+    all_downloaded_studies_paths = find_files_with_extension_recursively(CTGOV_DATASET_RAW_PATH, "json")
+
+    for path in all_downloaded_studies_paths:
+        nctid = os.path.split(path)[-1].split(".json")[0]
+        if nctid not in nctids_list_valid:
+            os.remove(path)
 
 
 def download_registry_from_api(knowledge_cutoff_date: datetime | None = None) -> None:
@@ -69,8 +71,9 @@ def download_registry_from_api(knowledge_cutoff_date: datetime | None = None) ->
         unzip_as_separate_jsons_and_delete_zip_file(f"{CTGOV_DATASET_RAW_PATH}.zip", CTGOV_DATASET_RAW_PATH)
         delete_studies_downloaded_after_cutoff(nctids_list_all_expected)
 
-    nctids_list_all_existing = [study.split(".json")[0] for study in os.listdir(CTGOV_DATASET_RAW_PATH) if
-                                study.endswith(".json")]
+    nctids_list_all_existing = [os.path.split(_path)[-1].split(".")[0] for _path in
+                                find_files_with_extension_recursively(CTGOV_DATASET_RAW_PATH, "json")]
+
     if set(nctids_list_all_existing) != set(nctids_list_all_expected):
         raise RuntimeError("Mismatch between expected and existing NCT IDs in the dataset.")
 
