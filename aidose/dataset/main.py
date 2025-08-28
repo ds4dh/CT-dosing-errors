@@ -22,6 +22,7 @@ from aidose.meddra.extraction import build_meddra_descendants
 
 from aidose.ctgov.structures import Study
 from aidose.ctgov import download_registry_from_api
+from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
 from aidose.dataset.utils import include_trial_after_sequential_filtering
 
@@ -48,7 +49,7 @@ from datetime import datetime
 
 
 def parse_study_by_nctid_from_json_path(nctid: str) -> Study:
-    json_path = os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json")
+    json_path = get_study_path_by_nctid_and_raw_dir(nctid, CTGOV_DATASET_RAW_PATH)
     with open(json_path, "r", encoding="utf-8") as f:
         study = Study.model_validate_json(f.read())
     return study
