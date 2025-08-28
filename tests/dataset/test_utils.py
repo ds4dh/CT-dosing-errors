@@ -3,16 +3,17 @@ from aidose.dataset.utils import sanitize_number_from_string
 from aidose.dataset.utils import match_terms_fuzzy
 from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
-from aidose.ctgov.structures import Study
+from aidose.ctgov.structures import Study, Status
 
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 from aidose.ctgov import download_registry_from_api
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import unittest
 import tqdm
 import os
+from datetime import datetime
 import json
 
 
@@ -26,26 +27,66 @@ class CTGovSequentialFilteringTest(unittest.TestCase):
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r') as f:
             cls.nctids_list = [line.strip() for line in f if line.strip()]
 
-    def test_include_trial_after_sequential_filtering(self):
+        cls.studies_list_included: List[Study] = []
+        cls.nctids_list_excluded: List[str] = []
 
-        num_included_trials = 0
-        num_excluded_trials = 0
-
-        for nctid in tqdm.tqdm(self.nctids_list, desc="Parsing all studies and checking filtering .."):
+        for nctid in tqdm.tqdm(cls.nctids_list, desc="Parsing all studies and filtering them for inclusion .."):
             json_path = get_study_path_by_nctid_and_raw_dir(nctid, CTGOV_DATASET_RAW_PATH)
 
             with open(json_path, 'r') as f:
                 study = Study.model_validate_json(f.read())
 
-            if include_trial_after_sequential_filtering(study):
-                num_included_trials += 1
+            if include_trial_after_sequential_filtering(study, datetime.today()):
+                cls.studies_list_included.append(study)
+                cls.studies_list_included.append(study)
             else:
-                num_excluded_trials += 1
+                cls.nctids_list_excluded.append(nctid)
+
+    def test_include_trial_after_sequential_filtering(self):
+
+        num_included_trials = len(self.studies_list_included)
+        num_excluded_trials = len(self.nctids_list_excluded)
 
         print("Number of included trials: {}".format(num_included_trials))
         print("Number of excluded trials: {}".format(num_excluded_trials))
 
         self.assertEqual(num_included_trials + num_excluded_trials, len(self.nctids_list))
+
+    def test_some_stats_from_included_trials(self):
+        self.assertTrue(len(self.studies_list_included) > 40000, "Expected more than 10,000 included trials.")
+
+        completed_studies_list: List[Study] = []
+        terminated_studies_list: List[Study] = []
+
+        completed_primary_completion_dates: List[datetime | None] = []
+        completed_completion_dates: List[datetime | None] = []
+        terminated_primary_completion_dates: List[datetime | None] = []
+        terminated_completion_dates: List[datetime | None] = []
+
+        for study in self.studies_list_included:
+            sm = study.protocolSection.statusModule
+            ds = getattr(sm, "completionDateStruct", None)
+            pds = getattr(sm, "primaryCompletionDateStruct", None)
+            if ds:
+                cd = ds.date.dt
+            else:
+                cd = None
+            if pds:
+                pcd = pds.date.dt
+            else:
+                pcd = None
+
+            if sm.overallStatus == Status.COMPLETED:
+                completed_studies_list.append(study)
+                completed_completion_dates.append(cd)
+                completed_primary_completion_dates.append(pcd)
+            if sm.overallStatus == Status.TERMINATED:
+                terminated_studies_list.append(study)
+                terminated_completion_dates.append(cd)
+                terminated_primary_completion_dates.append(pcd)
+
+        print("Number of completed trials: {}".format(len(completed_studies_list)))
+        print("Number of terminated trials: {}".format(len(terminated_studies_list)))
 
 
 class SanitizeNumberFromStringTestCase(unittest.TestCase):
