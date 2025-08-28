@@ -2,6 +2,7 @@ from aidose import RESOURCES_DIR
 from aidose.meddra import MEDDRA_CREATED_ARTIFACTS_DIR
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH
 
+from datetime import datetime
 import os
 
 MEDDRA_LABELS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
@@ -13,6 +14,7 @@ CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
 END_POINT_HF_DATASET_PATH = os.path.join(RESOURCES_DIR, "dataset")
 
+CTGOV_KNOWLEDGE_CUTOFF_DATE = datetime(year=2025, month=8, day=27)
 
 ALPHA_WILSON = 0.05
 
