@@ -97,7 +97,7 @@ def main():
         for nct_id in tqdm.tqdm(nctids_list_all, desc="Parsing trials and filtering them."):
             study = parse_study_by_nctid_from_json_path(nct_id)
 
-            if include_trial_after_sequential_filtering(study):
+            if include_trial_after_sequential_filtering(study, CTGOV_KNOWLEDGE_CUTOFF_DATE):
                 nctids_list_filtered.append(nct_id)
 
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, 'w', encoding='utf-8') as f:

@@ -43,6 +43,13 @@ def trial_study_has_a_completion_date(study: Study) -> bool:
     return False
 
 
+def trial_completion_date_before_cutoff(study: Study, knowledge_cutoff_date: datetime) -> bool:
+    sm = study.protocolSection.statusModule
+    completion_date = get_study_completion_date(sm)
+    if isinstance(completion_date, datetime) and completion_date <= knowledge_cutoff_date:
+        return True
+    return False
+
 
 def trial_has_at_least_one_drug_intervention(study: Study) -> bool:
     if not study.protocolSection:
@@ -71,15 +78,16 @@ def trial_has_adverse_events_module(study: Study) -> bool:
     return getattr(results_section, "adverseEventsModule", None) is not None
 
 
-def include_trial_after_sequential_filtering(study: Study) -> bool:
+def include_trial_after_sequential_filtering(study: Study, knowledge_cutoff_date: datetime) -> bool:
     """
     Sequentially filter trials based on:
     1. Study type must be "Interventional".
     2. Status must be either "Completed" or "Terminated".
     3. Study must have a completion date.
-    4. At least one intervention must be of type "DRUG".
-    5. Presence of a 'resultsSection'.
-    6. Presence of an 'adverseEventsModule' in the 'resultsSection'.
+    4. Study completion date must be before or on the knowledge cutoff date.
+    5. At least one intervention must be of type "DRUG".
+    6. Presence of a 'resultsSection'.
+    7. Presence of an 'adverseEventsModule' in the 'resultsSection'.
 
     Returns True if the trial passes all criteria.
     """
@@ -88,6 +96,8 @@ def include_trial_after_sequential_filtering(study: Study) -> bool:
     if not trial_status_is_either_completed_or_terminated(study):
         return False
     if not trial_study_has_a_completion_date(study):
+        return False
+    if not trial_completion_date_before_cutoff(study, knowledge_cutoff_date):
         return False
     if not trial_has_at_least_one_drug_intervention(study):
         return False
@@ -376,10 +386,9 @@ def get_study_completion_date(status_module: StatusModule) -> datetime | None:
     if completion_date_struct:
         return completion_date_struct.date.dt
     else:
-        # TODO: Is this logic correct?
+        # TODO: THIS LOGIC MAY BE WRONG ! Primary completion date and completion date are NOT the same !
         primary_completion_date_struct = getattr(status_module, "primaryCompletionDateStruct", None)
         if primary_completion_date_struct:
             return primary_completion_date_struct.date.dt
 
     return None
-
