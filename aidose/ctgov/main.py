@@ -1,5 +1,5 @@
 from aidose.ctgov.utils import (
-    fetch_all_study_nctids_from_request,
+    fetch_all_study_nctids_from_api_before_cutoff_date,
     download_all_studies_as_zip,
     unzip_and_delete_zip_file,
 )
@@ -39,13 +39,14 @@ def fetch_study_json_with_retries(nct_id: str) -> dict:
     raise RuntimeError(f"Too many retries (429): {nct_id}")
 
 
-def main():
+def download_registry_from_api(knowledge_cutoff_date: datetime | None = None) -> None:
     if os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH):
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, "r") as f:
             nctids_list_all_expected = [nctid.strip() for nctid in f.readlines()]
     else:
         os.makedirs(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH), exist_ok=True)
-        nctids_list_all_expected = fetch_all_study_nctids_from_request(CTGOV_API_DOWNLOAD_BASE_URL)
+        nctids_list_all_expected = fetch_all_study_nctids_from_api_before_cutoff_date(CTGOV_API_DOWNLOAD_BASE_URL,
+                                                                                      knowledge_cutoff_date)
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, "w") as f:
             for nct_id in nctids_list_all_expected:
                 f.write(f"{nct_id}\n")
@@ -65,4 +66,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    download_registry_from_api(knowledge_cutoff_date=None)
