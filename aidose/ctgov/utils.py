@@ -109,7 +109,7 @@ def download_all_studies_as_zip(target_zip_file_path: str, ctgov_api_download_ba
         print(f"Downloaded {os.path.split(target_zip_file_path)[-1]} to {os.path.dirname(target_zip_file_path)}")
 
 
-def unzip_and_delete_zip_file(zip_file_path: str, target_dir: str) -> None:
+def unzip_as_separate_jsons_and_delete_zip_file(zip_file_path: str, target_dir: str) -> None:
     os.makedirs(target_dir, exist_ok=False)
     with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
         zip_ref.extractall(target_dir)
