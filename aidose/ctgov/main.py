@@ -1,7 +1,7 @@
 from aidose.ctgov.utils import (
     fetch_all_study_nctids_from_api_before_cutoff_date,
     download_all_studies_as_zip,
-    unzip_and_delete_zip_file,
+    unzip_as_separate_jsons_and_delete_zip_file,
 )
 from aidose.ctgov import (CTGOV_DATASET_RAW_PATH,
                           CTGOV_DATASET_PATH,
@@ -12,6 +12,7 @@ import os
 import time
 import requests
 from datetime import datetime, timezone
+from typing import List
 
 
 def fetch_study_json_with_retries(nct_id: str) -> dict:
@@ -38,6 +39,14 @@ def fetch_study_json_with_retries(nct_id: str) -> dict:
 
     raise RuntimeError(f"Too many retries (429): {nct_id}")
 
+def delete_studies_downloaded_after_cutoff(nctids_list_valid: List[str]) -> None:
+    nctids_list_all_existing = [study.split(".json")[0] for study in os.listdir(CTGOV_DATASET_RAW_PATH) if
+                                study.endswith(".json")]
+    for nctid in nctids_list_all_existing:
+        if nctid not in nctids_list_valid:
+            os.remove(os.path.join(CTGOV_DATASET_RAW_PATH, f"{nctid}.json"))
+
+
 
 def download_registry_from_api(knowledge_cutoff_date: datetime | None = None) -> None:
     if os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH):
@@ -57,7 +66,8 @@ def download_registry_from_api(knowledge_cutoff_date: datetime | None = None) ->
         with open(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"), "w") as f:
             f.write("Download time (UTC): {}\n".format(datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%MZ")))
 
-        unzip_and_delete_zip_file(f"{CTGOV_DATASET_RAW_PATH}.zip", CTGOV_DATASET_RAW_PATH)
+        unzip_as_separate_jsons_and_delete_zip_file(f"{CTGOV_DATASET_RAW_PATH}.zip", CTGOV_DATASET_RAW_PATH)
+        delete_studies_downloaded_after_cutoff(nctids_list_all_expected)
 
     nctids_list_all_existing = [study.split(".json")[0] for study in os.listdir(CTGOV_DATASET_RAW_PATH) if
                                 study.endswith(".json")]
