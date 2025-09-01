@@ -14,6 +14,9 @@ import time
 import requests
 from datetime import datetime, timezone
 from typing import List
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_study_json_with_retries(nct_id: str) -> dict:
@@ -28,7 +31,7 @@ def fetch_study_json_with_retries(nct_id: str) -> dict:
 
         if response.status_code == 429:
             wait = backoff * (2 ** attempt)
-            print(f"Rate limited: {nct_id}, retrying in {wait:.1f}s...")
+            logger.warning(f"Rate limited: {nct_id}, retrying in {wait:.1f}s...")
             time.sleep(wait)
             continue
 

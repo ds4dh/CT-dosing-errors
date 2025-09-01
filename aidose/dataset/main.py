@@ -48,6 +48,9 @@ import os
 import json
 import tqdm
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)  # TODO: Perhaps write the logs to disk.
 
 
 def parse_study_by_nctid_from_json_path(nctid: str) -> Study:
@@ -63,6 +66,7 @@ def main():
     # -----------------------------
     meddra_labels: List[str] = []
     if not os.path.exists(MEDDRA_LABELS_JSON_PATH):
+        logger.info(f"{MEDDRA_LABELS_JSON_PATH} does not exist, creating one by traversing MedDRA...")
         meddra = MedDRA()
         meddra.load_data(MEDDRA_DATASET_PATH)
 
@@ -75,14 +79,16 @@ def main():
     else:
         with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
             meddra_labels = json.load(f).get("terms")
+        logger.info(f"{MEDDRA_LABELS_JSON_PATH} exists, so loading it ...")
 
-    # -----------------------------------
+        # -----------------------------------
     # 1) CTGov download and filtering
     # -----------------------------------
     if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and
             os.path.exists(CTGOV_DATASET_RAW_PATH) and
             os.path.exists(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"))
     ):
+        logger.info("Downloading CTGov registry from API ...")
         download_registry_from_api(CTGOV_KNOWLEDGE_CUTOFF_DATE)
     with open(os.path.join(CTGOV_DATASET_PATH, "download-time-tag.txt"), "r", encoding="utf-8") as f:
         try:
@@ -93,6 +99,7 @@ def main():
 
     nctids_list_filtered: List[str] = []
     if not os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH):
+        logger.info("Filtering CTGov trials for inclusion ...")
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r', encoding='utf-8') as f:
             nctids_list_all = [line.strip() for line in f if line.strip()]
 
@@ -105,11 +112,15 @@ def main():
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, 'w', encoding='utf-8') as f:
             for nctid in nctids_list_filtered:
                 f.write(f"{nctid}\n")
+        logger.info("Included {} studies after sequential filtering of the {} CTGov studies.".format(
+            len(nctids_list_filtered), len(nctids_list_all)))
     else:
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, "r", encoding="utf-8") as f:
             nctids_list_filtered = [line.strip() for line in f if line.strip()]
+        logger.info("Loaded (from {}) the list of {} CTGov trials included to the dataset....".format(
+            CTGOV_NCTIDS_LIST_FILTERED_PATH, len(nctids_list_filtered)))
 
-    # -------------------------------------------------
+        # -------------------------------------------------
     # 2) Per-study ADE processing + split pos / neg
     #    ADEAnalysisResultForStudy:
     #      - nctId: str
@@ -122,6 +133,7 @@ def main():
     negative_trials_ade: List[ADEAnalysisResultForStudy] = []
 
     if not os.path.exists(ADE_ANALYSIS_RESULTS_PATH):
+        logger.info("Didn't find an existing analysis of the ADE's for positive/negative trials, so creating one ...")
 
         normalized_ade_processing_errors: Dict[str, int] = {}
 
@@ -152,6 +164,7 @@ def main():
                 f,
                 indent=2,
             )
+        logger.info("Finalized with the ADE analysis of the trials and wrote them to disk for future re-use.")
 
     else:
         with open(ADE_ANALYSIS_RESULTS_PATH, "r", encoding="utf-8") as f:
@@ -159,7 +172,10 @@ def main():
             positive_trials_ade = [ADEAnalysisResultForStudy.model_validate(item) for item in data["positive_trials"]]
             negative_trials_ade = [ADEAnalysisResultForStudy.model_validate(item) for item in data["negative_trials"]]
 
-    # -------------------------------------------------
+        logger.info("Loaded the ADE analysis of the positive/negative trials from {} ...".format(
+            ADE_ANALYSIS_RESULTS_PATH))
+
+        # -------------------------------------------------
     # 3) Build global canonical label columns
     #    (best-match label per term within each positive study)
     # -------------------------------------------------
@@ -171,6 +187,7 @@ def main():
         )
 
     canonical_label_cols = sorted(canonical_label_set)
+    logger.info(f"Extracted {len(canonical_label_cols)} unique canonical ADE labels from positive terms ...")
 
     # -------------------------------------------------
     # 4) Features, metadata and label extraction (per study, using ADE enrichment)
@@ -199,6 +216,8 @@ def main():
         dataset_metadata.append(metadata)
         dataset_labels.append(labels)
 
+    logger.info("Finalized with the extraction of features, labels and the metadata.")
+
     # -------------------------------------------------
     # 5) Dataset splitting
     # -------------------------------------------------
@@ -218,6 +237,9 @@ def main():
     dataset_features_test: List[AttributesList] = [dataset_features[i] for i in test_idx]
     dataset_metadata_test: List[AttributesList] = [dataset_metadata[i] for i in test_idx]
     dataset_labels_test: List[AttributesList] = [dataset_labels[i] for i in test_idx]
+
+    logger.info("Split the dataset into train/valid/test with sizes: {}/{}/{}.".format(
+        len(dataset_features_train), len(dataset_features_valid), len(dataset_features_test)))
 
     # -------------------------------------------------
     # 6)  Dataset creation
@@ -304,11 +326,13 @@ def main():
         "validation": hf_dataset_valid,
         "test": hf_dataset_test})
 
+    logger.info("Created a `datasets.DatasetDict` instance with train/valid/test splits.")
     # -------------------------------------------------
     # 7) Saving
     # -------------------------------------------------
 
     hf_dataset_dict.save_to_disk(END_POINT_HF_DATASET_PATH)
+    logger.info(f"Saved the dataset {DATASET_NAME} with version {DATASET_VERSION} to {END_POINT_HF_DATASET_PATH} ...")
 
 
 if __name__ == '__main__':

@@ -6,10 +6,12 @@ import os
 from datetime import datetime
 
 from typing import List, Dict
+import logging
 
 PAGE_SIZE = 1000
 SLEEP_BETWEEN_PAGES = 0.1
 
+logger = logging.getLogger(__name__)
 
 def fetch_all_study_nctids_from_api_before_cutoff_date(
         ctgov_api_download_base_url: str,
@@ -36,9 +38,9 @@ def fetch_all_study_nctids_from_api_before_cutoff_date(
     """
     if knowledge_cutoff_date:
         date_str_for_api = knowledge_cutoff_date.strftime('%Y-%m-%d')
-        print(f"Fetching all NCTIDs for studies posted on or before {date_str_for_api}...")
+        logger.info(f"Fetching all NCTIDs for studies posted on or before {date_str_for_api}...")
     else:
-        print("Fetching all NCTIDs for all studies (no date filter)...")
+        logger.info("Fetching all NCTIDs for all studies as of now ...")
 
     nct_ids: List[str] = []
     page_token = None
@@ -63,7 +65,7 @@ def fetch_all_study_nctids_from_api_before_cutoff_date(
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
-            print(f"An API error occurred: {e}")
+            logger.error(f"An API error occurred: {e}")
             break
 
         ids = [study["protocolSection"]["identificationModule"]["nctId"]
@@ -76,7 +78,7 @@ def fetch_all_study_nctids_from_api_before_cutoff_date(
 
         time.sleep(SLEEP_BETWEEN_PAGES)
 
-    print(f"Found {len(nct_ids)} NCTIDs.")
+    logger.info(f"Found {len(nct_ids)} NCTIDs with the requested criteria.")
     return sorted(nct_ids)
 
 
@@ -98,7 +100,7 @@ def save_study_dict_as_json(nctid: str, study_json: Dict, dir_path: str) -> None
 def download_all_studies_as_zip(target_zip_file_path: str, ctgov_api_download_base_url: str) -> None:
     url = f"{ctgov_api_download_base_url}/studies/download?format=json.zip"
 
-    print(f"Downloading: {url}")
+    logger.info(f"Downloading: {url}")
     response = requests.get(url, stream=True)
     response.raise_for_status()
 
@@ -106,7 +108,7 @@ def download_all_studies_as_zip(target_zip_file_path: str, ctgov_api_download_ba
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
 
-        print(f"Downloaded {os.path.split(target_zip_file_path)[-1]} to {os.path.dirname(target_zip_file_path)}")
+        logger.info(f"Downloaded {os.path.split(target_zip_file_path)[-1]} to {os.path.dirname(target_zip_file_path)}")
 
 
 def unzip_as_separate_jsons_and_delete_zip_file(zip_file_path: str, target_dir: str) -> None:
@@ -115,7 +117,7 @@ def unzip_as_separate_jsons_and_delete_zip_file(zip_file_path: str, target_dir: 
         zip_ref.extractall(target_dir)
 
     os.remove(zip_file_path)
-    print(f"The source zip file {zip_file_path} was extracted to {target_dir} and then deleted.")
+    logger.info(f"The source zip file {zip_file_path} was extracted to {target_dir} and then deleted.")
 
 def get_study_path_by_nctid_and_raw_dir(nctid: str, raw_data_dir: str) -> str:
     parent_identifier = nctid[-2:]
