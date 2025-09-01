@@ -5,6 +5,11 @@ from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH
 from datetime import datetime
 import os
 
+DATASET_NAME = "CT-DOSING-ERRORS"
+DATASET_VERSION = "0.1.0"
+
+END_POINT_HF_DATASET_PATH = os.path.join(RESOURCES_DIR, DATASET_NAME, DATASET_VERSION)
+
 MEDDRA_LABELS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
 MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"  # TODO: Align with AY about manual JJ stuff
 
@@ -12,7 +17,6 @@ CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST
                                                "ctgov_nctids_list_filtered.txt")
 
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
-END_POINT_HF_DATASET_PATH = os.path.join(RESOURCES_DIR, "dataset")
 
 CTGOV_KNOWLEDGE_CUTOFF_DATE = datetime(year=2025, month=8, day=27)
 
