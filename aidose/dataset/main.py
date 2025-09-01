@@ -285,7 +285,8 @@ def main():
         medical dictionary of `www.meddra.org`, with version {}.""".format(
             DATASET_NAME,
             DATASET_VERSION,
-            CTGOV_KNOWLEDGE_CUTOFF_DATE.strftime("%Y-%m-%dT%HZ"),
+            CTGOV_KNOWLEDGE_CUTOFF_DATE.strftime("%Y-%m-%dT%HZ") if isinstance(CTGOV_KNOWLEDGE_CUTOFF_DATE, datetime)
+            else datetime.now().strftime("%Y-%m-%dT%HZ"),
             ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"),
             MEDDRA_VERSION),
         license_str=None,  # TODO: To decide on the licence.

@@ -83,7 +83,7 @@ def trial_has_adverse_events_module(study: Study) -> bool:
     return getattr(results_section, "adverseEventsModule", None) is not None
 
 
-def include_trial_after_sequential_filtering(study: Study, knowledge_cutoff_date: datetime) -> bool:
+def include_trial_after_sequential_filtering(study: Study, knowledge_cutoff_date: datetime | None) -> bool:
     """
     Sequentially filter trials based on:
     1. Study type must be "Interventional".
@@ -102,8 +102,9 @@ def include_trial_after_sequential_filtering(study: Study, knowledge_cutoff_date
         return False
     if not trial_study_has_a_completion_date(study):
         return False
-    if not trial_completion_date_before_cutoff(study, knowledge_cutoff_date):
-        return False
+    if knowledge_cutoff_date is not None:
+        if not trial_completion_date_before_cutoff(study, knowledge_cutoff_date):
+            return False
     if not trial_has_at_least_one_drug_intervention(study):
         return False
     if not trial_has_results_section(study):

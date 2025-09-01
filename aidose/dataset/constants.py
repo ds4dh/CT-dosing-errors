@@ -18,7 +18,7 @@ CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST
 
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
 
-CTGOV_KNOWLEDGE_CUTOFF_DATE = datetime(year=2025, month=8, day=27)
+CTGOV_KNOWLEDGE_CUTOFF_DATE: datetime | None = datetime(year=2025, month=9, day=1)
 
 ALPHA_WILSON = 0.05
 
