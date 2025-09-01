@@ -3,12 +3,17 @@ from aidose.ctgov.structures import Study, InterventionType, StudyType, Status, 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
 
+from datasets import DatasetInfo, Features, Version as HFVersion
 from rapidfuzz import fuzz
 
 from typing import Dict, List, Tuple, Any, Sequence, Iterable
 import re
 import requests
 from datetime import datetime
+from importlib.metadata import version as pkg_version, PackageNotFoundError
+import tomllib
+from pathlib import Path
+import subprocess
 
 
 # =========================
@@ -392,3 +397,65 @@ def get_study_completion_date(status_module: StatusModule) -> datetime | None:
             return primary_completion_date_struct.date.dt
 
     return None
+
+
+# =========================
+# Dataset versioning
+# =========================
+
+
+def get_code_version(package_name: str) -> str | None:
+    """Return the package/repo version from importlib"""
+    try:
+        return pkg_version(package_name)
+    except PackageNotFoundError:
+        pass
+
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    if not pyproject.exists():
+        return None
+
+    data = tomllib.load(pyproject.open("rb"))
+
+    v = (data or {}).get("project", {}).get("version")
+    return str(v) if v else None
+
+
+def get_git_sha(short: bool = False) -> str:
+    """Return current git SHA if available."""
+    sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+    ).decode().strip()
+    return sha[:7] if short else sha
+
+
+def make_dataset_info(
+        *,
+        dataset_version: str,
+        description: str,
+        features: Features | None = None,
+        license_str: str | None = None,
+        homepage: str | None = None,
+        citation: str | None = None,
+        package_name: str | None = None,
+) -> DatasetInfo:
+    code_version = get_code_version(package_name) if package_name else None
+    git_sha = get_git_sha(short=False)
+
+    built_by = []
+    if package_name and code_version:
+        built_by.append(f"\nThis dataset is built by {package_name} v{code_version}.")
+    if git_sha:
+        built_by.append(f"Commit {git_sha}.")
+    desc = description.strip()
+    if built_by:
+        desc += "\n" + " ".join(built_by)
+
+    return DatasetInfo(
+        description=desc,
+        version=HFVersion(dataset_version),
+        features=features,
+        license=license_str,
+        homepage=homepage,
+        citation=citation,
+    )
