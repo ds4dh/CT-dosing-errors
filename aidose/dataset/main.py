@@ -1,14 +1,15 @@
-import pandas as pd
-
 from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
+from aidose import PACKAGE_NAME
 from aidose.dataset import (
     MEDDRA_LABELS_JSON_PATH,
     MEDDRA_HLGT_CODES_LITERAL,
     CTGOV_NCTIDS_LIST_FILTERED_PATH,
     ADE_ANALYSIS_RESULTS_PATH,
     END_POINT_HF_DATASET_PATH,
-    CTGOV_KNOWLEDGE_CUTOFF_DATE
+    CTGOV_KNOWLEDGE_CUTOFF_DATE,
+    DATASET_NAME,
+    DATASET_VERSION
 )
 
 from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
@@ -16,6 +17,7 @@ from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
                                       TRAINING_SIZE,
                                       VALIDATION_SIZE,
                                       TEST_SIZE)
+
 from aidose.meddra.graph import MedDRA
 from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
@@ -24,7 +26,7 @@ from aidose.ctgov.structures import Study
 from aidose.ctgov import download_registry_from_api
 from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
-from aidose.dataset.utils import include_trial_after_sequential_filtering
+from aidose.dataset.utils import include_trial_after_sequential_filtering, make_dataset_info
 
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.ade import ADEAnalysisResultForStudy
@@ -38,7 +40,7 @@ from aidose.dataset.feature_extraction import (extract_features_for_training_fro
 
 from aidose.dataset.split import ListSplitter
 
-from datasets import Dataset, Features, Value, DatasetInfo, DatasetDict, Version
+from datasets import Dataset, Features, Value, DatasetDict
 
 from typing import List, Dict
 
@@ -253,6 +255,22 @@ def main():
         "labels": labels_schema,
     })
 
+    ds_info = make_dataset_info(
+        dataset_version=DATASET_VERSION,
+        description="""{} (v{}): A dataset to study the ADE risks (dosing errors) in clinical trials. 
+        
+        Based on the studies from `www.clinicaltrials.gov`, completed before {} and downloaded at {}, and the 
+        medical dictionary of `www.meddra.org`, with version {}.""".format(
+            DATASET_NAME,
+            DATASET_VERSION,
+            CTGOV_KNOWLEDGE_CUTOFF_DATE.strftime("%Y-%m-%dT%HZ"),
+            ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"),
+            MEDDRA_VERSION),
+        license_str=None,  # TODO: To decide on the licence.
+        package_name=PACKAGE_NAME,
+        features=schema
+    )
+
     hf_dataset_train = Dataset.from_dict(
         {
             "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_train],
@@ -260,6 +278,7 @@ def main():
             "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_train],
         },
         features=schema,
+        info=ds_info
     )
     hf_dataset_valid = Dataset.from_dict(
         {
@@ -268,6 +287,7 @@ def main():
             "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_valid],
         },
         features=schema,
+        info=ds_info
     )
     hf_dataset_test = Dataset.from_dict(
         {
@@ -276,6 +296,7 @@ def main():
             "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_test],
         },
         features=schema,
+        info=ds_info
     )
 
     hf_dataset_dict = DatasetDict({
@@ -283,16 +304,6 @@ def main():
         "validation": hf_dataset_valid,
         "test": hf_dataset_test})
 
-    hf_dataset_dict.info = DatasetInfo(
-        features=schema,
-        description="""A dataset to study the ADE risks in clinical trials. 
-        
-        Based on the studies from `www.clinicaltrials.gov`, downloaded at {}, and the medical dictionary of 
-        `www.meddra.org`, with version {}.""".format(
-            ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"), MEDDRA_VERSION)
-    )
-
-    # TODO: Add versioning, knowledge cutoff date
     # -------------------------------------------------
     # 7) Saving
     # -------------------------------------------------
