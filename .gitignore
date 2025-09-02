@@ -9,3 +9,7 @@ __pycache__
 /build/
 *.egg-info/
 /resources/
+data/
+log/
+__pycache__/
+
