@@ -2,6 +2,8 @@ from aidose.ctgov.structures import Study
 
 from typing import Dict, List, Tuple, Any
 import requests
+
+
 # =========================
 # Intervention accessors
 # =========================
@@ -45,7 +47,8 @@ def has_sap(study: Study) -> bool:       return _has_doc_flag(study, "hasSap")
 def has_icf(study: Study) -> bool:       return _has_doc_flag(study, "hasIcf")
 
 
-def get_large_protocols_pdf_links(study: Study) -> List[str] | None:
+def get_large_protocols_pdf_links(study: Study, check_link_status: bool = False) -> List[str] | None:
+    # TODO: Create tests for this function
     if not has_protocol(study):
         return None
     large_docs = study.documentSection.largeDocumentModule.largeDocs
@@ -58,13 +61,15 @@ def get_large_protocols_pdf_links(study: Study) -> List[str] | None:
         filename = doc.filename
         if isinstance(filename, str) and filename.endswith(".pdf"):
             link = "https://cdn.clinicaltrials.gov/large-docs/{}/{}/{}".format(subfolder, nctid, filename)
-            try:
-                response = requests.head(link, timeout=5)
-                if response.status_code == 200:
-                    links.append(link)
-                else:
-                    raise RuntimeError(f"URL not found or not accessible: {link} (status {response.status_code})")
-            except requests.RequestException as e:
-                raise RuntimeError(f"Error checking URL {link}: {e}")
-    # TODO: Create tests for this function
+            if check_link_status:
+                try:
+                    response = requests.head(link, timeout=5)
+                    if response.status_code != 200:
+                        raise RuntimeError(f"URL not found or not accessible: {link} (status {response.status_code})")
+
+                except requests.RequestException as e:
+                    raise RuntimeError(f"Error checking URL {link}: {e}")
+
+            links.append(link)
+
     return links if links else None
