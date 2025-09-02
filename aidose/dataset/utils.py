@@ -3,7 +3,7 @@ from aidose.ctgov.structures import Study, InterventionType, StudyType, Status, 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
 
-from datasets import DatasetInfo, Features, Version as HFVersion
+from datasets import DatasetInfo, Features, Value, Version as HFVersion
 from rapidfuzz import fuzz
 
 from typing import Dict, List, Tuple, Any, Sequence, Iterable
@@ -460,3 +460,26 @@ def make_dataset_info(
         homepage=homepage,
         citation=citation,
     )
+
+
+# =========================
+# Dataset type helpers and schema builders
+# =========================
+
+def hf_type_map(t: type) -> str:
+    if t is str:
+        return "string"
+    if t is int:
+        return "int64"
+    if t is float:
+        return "float64"
+    if t is bool:
+        return "bool"
+    if t is datetime:
+        return "date32"
+    else:
+        raise NotImplementedError
+
+
+def build_struct_schema(names, types):
+    return {n: Value(hf_type_map(t)) for n, t in zip(names, types)}

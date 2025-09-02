@@ -16,7 +16,9 @@ from aidose.dataset import (
     DATASET_VERSION
 )
 
-from aidose.dataset.utils import include_trial_after_sequential_filtering, make_dataset_info
+from aidose.dataset.utils import (include_trial_after_sequential_filtering,
+                                  make_dataset_info,
+                                  build_struct_schema)
 
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.ade import ADEAnalysisResultForStudy
@@ -38,7 +40,7 @@ from aidose.ctgov.structures import Study
 from aidose.ctgov import download_registry_from_api
 from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
-from datasets import Dataset, Features, Value, DatasetDict
+from datasets import Dataset, Features, DatasetDict
 
 from typing import List, Dict
 
@@ -249,26 +251,8 @@ def main():
         len(dataset_features_train), len(dataset_features_valid), len(dataset_features_test)))
 
     # -------------------------------------------------
-    # 6)  Dataset creation
+    # 6)  Dataset creation with schemas
     # -----------------------------------
-
-    def hf_type_map(t: type) -> str:
-        if t is str:
-            return "string"
-        if t is int:
-            return "int64"
-        if t is float:
-            return "float64"
-        if t is bool:
-            return "bool"
-        if t is datetime:
-            return "date32"
-        else:
-            raise NotImplementedError
-
-    def build_struct_schema(names, types):
-        return {n: Value(hf_type_map(t)) for n, t in zip(names, types)}
-
     # --- derive sub-schemas ---
     feat_names, feat_types = dataset_features[0].get_names(), dataset_features[0].get_types()
     meta_names, meta_types = dataset_metadata[0].get_names(), dataset_metadata[0].get_types()
@@ -335,6 +319,7 @@ def main():
         "test": hf_dataset_test})
 
     logger.info("Created a `datasets.DatasetDict` instance with train/valid/test splits.")
+
     # -------------------------------------------------
     # 7) Saving
     # -------------------------------------------------
