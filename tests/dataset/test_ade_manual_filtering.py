@@ -1,5 +1,5 @@
 from aidose.dataset import MEDDRA_ADE_LABELS_PATH
-from aidose.dataset.ade_manual_filtering import filter_terms
+from aidose.dataset.ade_manual_filtering import filter_ade_terms_to_focus_on_dosing_errors
 import json
 import os
 import unittest
@@ -229,7 +229,7 @@ class FilterMedDRAUnitTest(unittest.TestCase):
         self.expected_terms_from_manual_filtering = MANUALLY_FILTERED_POSITIVE_LABELS_FROM_JJ
 
     def test_filter_reproduces_expected_terms(self):
-        got_filtered = filter_terms(self.full_terms_extracted_from_meddra)
+        got_filtered = filter_ade_terms_to_focus_on_dosing_errors(self.full_terms_extracted_from_meddra)
 
         self.assertEqual(set(got_filtered), set(self.expected_terms_from_manual_filtering),
                          "Filtered terms set does not match expected curated set.")

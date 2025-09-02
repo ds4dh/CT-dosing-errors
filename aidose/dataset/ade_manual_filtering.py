@@ -2,7 +2,7 @@ import re
 from typing import List
 
 
-def filter_terms(terms: List[str]) -> List[str]:
+def filter_ade_terms_to_focus_on_dosing_errors(terms: List[str]) -> List[str]:
     """
     Filters a list of MedDRA terms to isolate those related to dosing,
     administration, and medication use errors.
