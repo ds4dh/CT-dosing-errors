@@ -1,3 +1,14 @@
+__pycache__
+*/__pycache__/*
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+.idea*
+*/.idea*/*
+.DS_Store
+*/.DS_Store/*
+/build/
+*.egg-info/
+/resources/
 data/
 log/
 __pycache__/
