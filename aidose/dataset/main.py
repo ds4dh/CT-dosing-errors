@@ -38,7 +38,7 @@ from aidose.meddra.extraction import build_meddra_descendants
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
 from aidose.ctgov.structures import Study
 from aidose.ctgov import download_registry_from_api
-from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
+from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
 
 from datasets import Dataset, Features, DatasetDict
 

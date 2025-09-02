@@ -13,6 +13,7 @@ SLEEP_BETWEEN_PAGES = 0.1
 
 logger = logging.getLogger(__name__)
 
+
 def fetch_all_study_nctids_from_api_before_cutoff_date(
         ctgov_api_download_base_url: str,
         knowledge_cutoff_date: datetime | None
@@ -119,12 +120,14 @@ def unzip_as_separate_jsons_and_delete_zip_file(zip_file_path: str, target_dir: 
     os.remove(zip_file_path)
     logger.info(f"The source zip file {zip_file_path} was extracted to {target_dir} and then deleted.")
 
+
 def get_study_path_by_nctid_and_raw_dir(nctid: str, raw_data_dir: str) -> str:
     parent_identifier = nctid[-2:]
     path = os.path.join(raw_data_dir, parent_identifier, f"{nctid}.json")
     if not os.path.exists(path):
         raise FileNotFoundError(f"The study JSON file for NCT ID {nctid} does not exist at {path}.")
     return path
+
 
 def find_files_with_extension_recursively(root_dir: str, extension: str):
     matches = []
