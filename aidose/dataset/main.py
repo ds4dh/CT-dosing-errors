@@ -1,6 +1,10 @@
-from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
-from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
 from aidose import PACKAGE_NAME
+
+from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
+                                      ALPHA_WILSON,
+                                      TRAINING_SIZE,
+                                      VALIDATION_SIZE,
+                                      TEST_SIZE)
 from aidose.dataset import (
     MEDDRA_ADE_LABELS_PATH,
     MEDDRA_HLGT_CODES_LITERAL,
@@ -12,33 +16,27 @@ from aidose.dataset import (
     DATASET_VERSION
 )
 
-from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
-                                      ALPHA_WILSON,
-                                      TRAINING_SIZE,
-                                      VALIDATION_SIZE,
-                                      TEST_SIZE)
-
-from aidose.meddra.graph import MedDRA
-from aidose.meddra.utils import parse_hlgt_codes_literal
-from aidose.meddra.extraction import build_meddra_descendants
-
-from aidose.ctgov.structures import Study
-from aidose.ctgov import download_registry_from_api
-from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
-
 from aidose.dataset.utils import include_trial_after_sequential_filtering, make_dataset_info
 
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.ade import ADEAnalysisResultForStudy
-
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
-
+from aidose.dataset.ade_manual_filtering import filter_ade_terms_to_focus_on_dosing_errors
 from aidose.dataset.attribute import AttributesList
 from aidose.dataset.feature_extraction import (extract_features_for_training_from_study,
                                                extract_metadata_from_study,
                                                extract_labels_from_study)
-
 from aidose.dataset.split import ListSplitter
+
+from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
+from aidose.meddra.graph import MedDRA
+from aidose.meddra.utils import parse_hlgt_codes_literal
+from aidose.meddra.extraction import build_meddra_descendants
+
+from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
+from aidose.ctgov.structures import Study
+from aidose.ctgov import download_registry_from_api
+from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
 
 from datasets import Dataset, Features, Value, DatasetDict
 
@@ -70,7 +68,8 @@ def main():
     # -----------------------------
     meddra_labels: List[str] = []
     if not os.path.exists(MEDDRA_ADE_LABELS_PATH):
-        logger.info(f"{MEDDRA_ADE_LABELS_PATH} does not exist, creating one by traversing MedDRA...")
+        logger.info(f"The list of ADE-related MedDRA terms does not exist at {MEDDRA_ADE_LABELS_PATH}, "
+                    f"so creating one by traversing MedDRA...")
         meddra = MedDRA()
         meddra.load_data(MEDDRA_DATASET_PATH)
 
@@ -83,9 +82,13 @@ def main():
     else:
         with open(MEDDRA_ADE_LABELS_PATH, "r", encoding="utf-8") as f:
             meddra_labels = json.load(f).get("terms")
-        logger.info(f"{MEDDRA_ADE_LABELS_PATH} exists, so loading it ...")
+        logger.info(f"The list of ADE-related MedDRA terms exists at {MEDDRA_ADE_LABELS_PATH}, so loading it ...")
 
-        # -----------------------------------
+    logger.info("Manually filtering the ADE-related MedDRA terms to focus on dosing errors ...")
+    meddra_labels = filter_ade_terms_to_focus_on_dosing_errors(meddra_labels)
+    logger.info(f"After manual filtering, {len(meddra_labels)} ADE-related MedDRA terms remain.")
+
+    # -----------------------------------
     # 1) CTGov download and filtering
     # -----------------------------------
     if not (os.path.exists(CTGOV_NCTIDS_LIST_ALL_PATH) and
@@ -124,7 +127,7 @@ def main():
         logger.info("Loaded (from {}) the list of {} CTGov trials included to the dataset....".format(
             CTGOV_NCTIDS_LIST_FILTERED_PATH, len(nctids_list_filtered)))
 
-        # -------------------------------------------------
+    # -------------------------------------------------
     # 2) Per-study ADE processing + split pos / neg
     #    ADEAnalysisResultForStudy:
     #      - nctId: str
@@ -179,7 +182,7 @@ def main():
         logger.info("Loaded the ADE analysis of the positive/negative trials from {} ...".format(
             ADE_ANALYSIS_RESULTS_PATH))
 
-        # -------------------------------------------------
+    # -------------------------------------------------
     # 3) Build global canonical label columns
     #    (best-match label per term within each positive study)
     # -------------------------------------------------
