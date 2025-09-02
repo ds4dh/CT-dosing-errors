@@ -10,14 +10,13 @@ from aidose.ctgov.structures import (
     AgencyClass,
     Status, ArmGroupType,
 )
+from aidose.ctgov.utils_protocol import (has_protocol,
+                                         has_sap,
+                                         has_icf,
+                                         get_protocol_arm_groups,
+                                         get_protocol_interventions)
 
-from .utils import (has_protocol,
-                    has_sap,
-                    has_icf,
-                    get_protocol_arm_groups,
-                    get_protocol_interventions,
-                    get_location_details,
-                    get_study_completion_date)
+from .utils import get_location_details, get_study_completion_date
 
 from .attribute import Attribute, AttributesList
 from .ade import ADEAnalysisResultForStudy

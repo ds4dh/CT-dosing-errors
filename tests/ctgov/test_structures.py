@@ -2,7 +2,7 @@ from aidose.ctgov.structures import StrEnumWithNumericDeprecated
 from aidose.ctgov.structures import Study
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH
 from aidose.ctgov.main import download_registry_from_api
-from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
+from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
 
 import unittest
 from pydantic import ValidationError
