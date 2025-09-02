@@ -2,7 +2,7 @@ from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_PATH
 from aidose import PACKAGE_NAME
 from aidose.dataset import (
-    MEDDRA_LABELS_JSON_PATH,
+    MEDDRA_ADE_LABELS_PATH,
     MEDDRA_HLGT_CODES_LITERAL,
     CTGOV_NCTIDS_LIST_FILTERED_PATH,
     ADE_ANALYSIS_RESULTS_PATH,
@@ -50,6 +50,10 @@ import tqdm
 from datetime import datetime
 import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)  # TODO: Perhaps write the logs to disk.
 
 
@@ -62,24 +66,24 @@ def parse_study_by_nctid_from_json_path(nctid: str) -> Study:
 
 def main():
     # -----------------------------
-    # 0) MedDRA positive terms
+    # 0) MedDRA ADE-related positive terms + dosing-related manual filtering
     # -----------------------------
     meddra_labels: List[str] = []
-    if not os.path.exists(MEDDRA_LABELS_JSON_PATH):
-        logger.info(f"{MEDDRA_LABELS_JSON_PATH} does not exist, creating one by traversing MedDRA...")
+    if not os.path.exists(MEDDRA_ADE_LABELS_PATH):
+        logger.info(f"{MEDDRA_ADE_LABELS_PATH} does not exist, creating one by traversing MedDRA...")
         meddra = MedDRA()
         meddra.load_data(MEDDRA_DATASET_PATH)
 
         codes = parse_hlgt_codes_literal(MEDDRA_HLGT_CODES_LITERAL)
         ade_analysis_result = build_meddra_descendants(meddra, codes)
         meddra_labels = sorted(list(ade_analysis_result.terms))
-        with open(MEDDRA_LABELS_JSON_PATH, "w", encoding="utf-8") as f:
+        with open(MEDDRA_ADE_LABELS_PATH, "w", encoding="utf-8") as f:
             json.dump({"terms": meddra_labels}, f, ensure_ascii=False, indent=4)
 
     else:
-        with open(MEDDRA_LABELS_JSON_PATH, "r", encoding="utf-8") as f:
+        with open(MEDDRA_ADE_LABELS_PATH, "r", encoding="utf-8") as f:
             meddra_labels = json.load(f).get("terms")
-        logger.info(f"{MEDDRA_LABELS_JSON_PATH} exists, so loading it ...")
+        logger.info(f"{MEDDRA_ADE_LABELS_PATH} exists, so loading it ...")
 
         # -----------------------------------
     # 1) CTGov download and filtering

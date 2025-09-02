@@ -10,7 +10,7 @@ DATASET_VERSION = "0.1.0"
 
 END_POINT_HF_DATASET_PATH = os.path.join(RESOURCES_DIR, DATASET_NAME, DATASET_VERSION)
 
-MEDDRA_LABELS_JSON_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
+MEDDRA_ADE_LABELS_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
 MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"  # TODO: Align with AY about manual JJ stuff
 
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
@@ -18,7 +18,7 @@ CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST
 
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
 
-CTGOV_KNOWLEDGE_CUTOFF_DATE: datetime | None = datetime(year=2025, month=9, day=1)
+CTGOV_KNOWLEDGE_CUTOFF_DATE: datetime | None = datetime(year=2025, month=9, day=2)
 
 ALPHA_WILSON = 0.05
 

@@ -1,4 +1,4 @@
-from aidose.dataset import MEDDRA_LABELS_JSON_PATH
+from aidose.dataset import MEDDRA_ADE_LABELS_PATH
 from aidose.dataset.ade_manual_filtering import filter_terms
 import json
 import os
@@ -221,9 +221,9 @@ MANUALLY_FILTERED_POSITIVE_LABELS_FROM_JJ: List[str] = [
 
 class FilterMedDRAUnitTest(unittest.TestCase):
     def setUp(self) -> None:
-        if not os.path.exists(MEDDRA_LABELS_JSON_PATH):
-            raise FileNotFoundError(f"File {MEDDRA_LABELS_JSON_PATH} not found. Please run the main dataset API first.")
-        with open(MEDDRA_LABELS_JSON_PATH, 'r', encoding='utf-8') as f:
+        if not os.path.exists(MEDDRA_ADE_LABELS_PATH):
+            raise FileNotFoundError(f"File {MEDDRA_ADE_LABELS_PATH} not found. Please run the main dataset API first.")
+        with open(MEDDRA_ADE_LABELS_PATH, 'r', encoding='utf-8') as f:
             self.full_terms_extracted_from_meddra = json.load(f)["terms"]
 
         self.expected_terms_from_manual_filtering = MANUALLY_FILTERED_POSITIVE_LABELS_FROM_JJ
