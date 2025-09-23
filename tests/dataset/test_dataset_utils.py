@@ -14,7 +14,6 @@ import unittest
 import tqdm
 import os
 from datetime import datetime
-import json
 
 
 class CTGovSequentialFilteringTest(unittest.TestCase):

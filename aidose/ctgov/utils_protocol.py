@@ -48,7 +48,6 @@ def has_icf(study: Study) -> bool:       return _has_doc_flag(study, "hasIcf")
 
 
 def get_large_protocols_pdf_links(study: Study, check_link_status: bool = False) -> List[str] | None:
-    # TODO: Create tests for this function
     if not has_protocol(study):
         return None
     large_docs = study.documentSection.largeDocumentModule.largeDocs
