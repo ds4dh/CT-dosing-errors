@@ -56,7 +56,7 @@ def _label_count_features_from_positive_terms(
     If a label is unused for the study, value=0.
     """
     # TODO: This is murky.
-    feats: List[Attribute] = []
+    attribs: List[Attribute] = []
     term_to_label = term_to_best_label_map_from_positive_terms(positive_terms)
 
     counts: Dict[str, int] = {lbl: 0 for lbl in canonical_label_cols}
@@ -76,11 +76,11 @@ def _label_count_features_from_positive_terms(
             counts[best_label] += num_aff_int
 
     for label in canonical_label_cols:
-        feats.append(Attribute(name=f"label.{label}", value=counts.get(label, 0), declared_type=int))
-    return feats
+        attribs.append(Attribute(name=f"label.{label}", value=counts.get(label, 0), declared_type=int))
+    return attribs
 
 
-def add_new_label_features_from_existing(feats: AttributesList,
+def add_new_label_features_from_existing(attribs: AttributesList,
                                          alpha_wilson: float,
                                          wilson_proba_threshold: float
                                          ) -> AttributesList:
@@ -100,10 +100,10 @@ def add_new_label_features_from_existing(feats: AttributesList,
         return lower
 
     sum_dosing_error = Attribute(name="sum_dosing_errors",
-                                 value=sum([feat.value for feat in feats if feat.name.startswith("label.")]),
+                                 value=sum([feat.value for feat in attribs if feat.name.startswith("label.")]),
                                  declared_type=int)
 
-    ct_level_ade_population = next((feat.value for feat in feats if feat.name == "ct_level_ade_population"))
+    ct_level_ade_population = next((feat.value for feat in attribs if feat.name == "ct_level_ade_population"))
 
     dosing_error_rate = Attribute(name="dosing_error_rate",
                                   value=(
@@ -123,12 +123,12 @@ def add_new_label_features_from_existing(feats: AttributesList,
                              # TODO: Check this with Félicien
                              declared_type=int)
 
-    feats.append(sum_dosing_error)
-    feats.append(dosing_error_rate)
-    feats.append(wilson_lower_bound)
-    feats.append(wilson_label)
+    attribs.append(sum_dosing_error)
+    attribs.append(dosing_error_rate)
+    attribs.append(wilson_lower_bound)
+    attribs.append(wilson_label)
 
-    return feats
+    return attribs
 
 
 # =========================
@@ -143,7 +143,7 @@ def extract_features_for_training_from_study(
     NOTE: This function does NOT perform one-hot/multi-hot expansion.
           Call `features.expand_enums()` later if you want hot encodings.
     """
-    feats = AttributesList()
+    attribs = AttributesList()
 
     ps = study.protocolSection
 
@@ -152,106 +152,106 @@ def extract_features_for_training_from_study(
 
     # phases: list[Phase] (keep as Enum list; expand later)
     phases_list = list(design.phases) if (design and design.phases) else None
-    feats.append(Attribute(name="phases", value=phases_list, declared_type=Phase))
+    attribs.append(Attribute(name="phases", value=phases_list, declared_type=Phase))
 
     enroll = design.enrollmentInfo if design and design.enrollmentInfo else None
-    feats.append(Attribute(name="enrollmentCount", value=(enroll.count if enroll else None), declared_type=int))
+    attribs.append(Attribute(name="enrollmentCount", value=(enroll.count if enroll else None), declared_type=int))
 
     d_info = design.designInfo if design and design.designInfo else None
     # TODO: Enum should be used for allocation and interventionModel:
-    feats.append(Attribute(name="allocation", value=(d_info.allocation if d_info else None), declared_type=str))
-    feats.append(
+    attribs.append(Attribute(name="allocation", value=(d_info.allocation if d_info else None), declared_type=str))
+    attribs.append(
         Attribute(name="interventionModel", value=(d_info.interventionModel if d_info else None), declared_type=str))
-    feats.append(
+    attribs.append(
         Attribute(name="primaryPurpose", value=(d_info.primaryPurpose if d_info else None),
                   declared_type=PrimaryPurpose))
 
     masking_val = d_info.maskingInfo.masking if d_info and d_info.maskingInfo else None
-    feats.append(Attribute(name="masking", value=masking_val, declared_type=Masking))
+    attribs.append(Attribute(name="masking", value=masking_val, declared_type=Masking))
 
     # --- Eligibility ---
     elig = ps.eligibilityModule if ps and ps.eligibilityModule else None
-    feats.append(
+    attribs.append(
         Attribute(name="healthyVolunteers", value=(elig.healthyVolunteers if elig else None), declared_type=bool))
-    feats.append(Attribute(name="sex", value=(elig.sex if elig else None), declared_type=Sex))
+    attribs.append(Attribute(name="sex", value=(elig.sex if elig else None), declared_type=Sex))
 
     std_ages = list(elig.stdAges) if (elig and elig.stdAges) else None
     if std_ages and isinstance(std_ages[0], Enum):  # cautious
-        feats.append(Attribute(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
+        attribs.append(Attribute(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
 
     # --- Sponsor ---
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
     lead_name = lead.name if lead else None
-    feats.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
-    feats.append(Attribute(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
+    attribs.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
+    attribs.append(Attribute(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
 
     oversight = ps.oversightModule if ps and ps.oversightModule else None
-    feats.append(
+    attribs.append(
         Attribute(name="oversightHasDmc", value=(oversight.oversightHasDmc if oversight else None), declared_type=bool))
 
     # --- Description Module ---
-    feats.append(Attribute(name="briefSummary",
+    attribs.append(Attribute(name="briefSummary",
                            value=ps.descriptionModule.briefSummary,
                            declared_type=str))
 
-    feats.append(Attribute(name="detailedDescription",
+    attribs.append(Attribute(name="detailedDescription",
                            value=ps.descriptionModule.detailedDescription,
                            declared_type=str))
     # --- Conditions Module ---
-    feats.append(Attribute(name="conditions",
+    attribs.append(Attribute(name="conditions",
                            value=" ".join(ps.conditionsModule.conditions) if ps and ps.conditionsModule else None,
                            declared_type=str))
 
-    feats.append(Attribute(name="conditionsKeywords",
+    attribs.append(Attribute(name="conditionsKeywords",
                            value=" ".join(ps.conditionsModule.keywords) if ps and ps.conditionsModule else None,
                            declared_type=str))
 
     # --- Documents ---
-    feats.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
-    feats.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
-    feats.append(Attribute(name="hasIcf", value=has_icf(study), declared_type=bool))
+    attribs.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
+    attribs.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
+    attribs.append(Attribute(name="hasIcf", value=has_icf(study), declared_type=bool))
 
     # --- Arms & interventions ---
     arms = get_protocol_arm_groups(study)
 
     num_arms = len(arms)
-    feats.append(Attribute(name="numArms", value=num_arms, declared_type=int))
+    attribs.append(Attribute(name="numArms", value=num_arms, declared_type=int))
 
     arm_descriptions = [getattr(arm, "description", None) for arm in arms]
-    feats.append(Attribute(name="armDescriptions",
+    attribs.append(Attribute(name="armDescriptions",
                            value=" ".join(
                                f"arm {i + 1}: {s}" for i, s in
                                enumerate(arm_descriptions)) if arm_descriptions else None,
                            declared_type=str))
     arm_group_types = [getattr(arm, "type", None) for arm in arms]
-    feats.append(Attribute(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
+    attribs.append(Attribute(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
                            declared_type=ArmGroupType))
 
     interventions = get_protocol_interventions(study)
-    feats.append(Attribute(name="numInterventions", value=len(interventions), declared_type=int))
+    attribs.append(Attribute(name="numInterventions", value=len(interventions), declared_type=int))
 
     itypes = [getattr(itv, "type", None) for itv in interventions]
-    feats.append(Attribute(name="interventionTypes", value=itypes, declared_type=InterventionType))
+    attribs.append(Attribute(name="interventionTypes", value=itypes, declared_type=InterventionType))
 
     i_descriptions = [getattr(itv, "description", None) for itv in interventions]
-    feats.append(Attribute(name="interventionDescriptions",
+    attribs.append(Attribute(name="interventionDescriptions",
                            value=" ".join(f"intervention {i + 1}: {s}" for i, s in
                                           enumerate(i_descriptions)) if i_descriptions else None,
                            declared_type=str))
     i_names = [getattr(itv, "name", None) for itv in interventions]
-    feats.append(Attribute(name="interventionNames",
+    attribs.append(Attribute(name="interventionNames",
                            value=" ".join(
                                f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
                            declared_type=str))
 
     # --- Locations ---
     loc_details = get_location_details(study)
-    feats.append(Attribute(name="numLocations", value=len(loc_details), declared_type=int))
-    feats.append(
+    attribs.append(Attribute(name="numLocations", value=len(loc_details), declared_type=int))
+    attribs.append(
         Attribute(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
 
-    return feats
+    return attribs
 
 
 def extract_labels_from_study(
@@ -263,25 +263,25 @@ def extract_labels_from_study(
     """
     Extract label-related attributes from a Study.
     """
-    feats = AttributesList()
+    attribs = AttributesList()
 
     # --- ADE enrichment ---
     # TODO: label-related and meta-related fields will be considered separately.
     ade = ade_analysis_results_for_study
-    feats.append(Attribute(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
-    feats.append(Attribute(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
-    feats.append(Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
+    attribs.append(Attribute(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
+    attribs.append(Attribute(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
+    attribs.append(Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
     # --- canonical label counts ---
-    feats.extend(_label_count_features_from_positive_terms(
+    attribs.extend(_label_count_features_from_positive_terms(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
     ))
 
     # --- Creating new label-related fields based on existing ones ---
-    feats = add_new_label_features_from_existing(feats, alpha_wilson, wilson_proba_threshold)
+    attribs = add_new_label_features_from_existing(attribs, alpha_wilson, wilson_proba_threshold)
 
-    return feats
+    return attribs
 
 
 def extract_metadata_from_study(study: Study) -> AttributesList:
@@ -289,24 +289,24 @@ def extract_metadata_from_study(study: Study) -> AttributesList:
     Extract metadata features from a Study.
     These are non-training features.
     """
-    feats = AttributesList()
+    attribs = AttributesList()
 
     # --- Identification ---
     ps = study.protocolSection
     nctid = ps.identificationModule.nctId if ps and ps.identificationModule else None
-    feats.append(Attribute(name="nctId", value=nctid, declared_type=str))
+    attribs.append(Attribute(name="nctId", value=nctid, declared_type=str))
 
     # --- Status ---
     sm = ps.statusModule
-    feats.append(Attribute(name="overallStatus", value=sm.overallStatus, declared_type=Status))
+    attribs.append(Attribute(name="overallStatus", value=sm.overallStatus, declared_type=Status))
 
     completion_date = get_study_completion_date(sm)
 
-    feats.append(Attribute(name="completionDate",
+    attribs.append(Attribute(name="completionDate",
                            value=completion_date,
                            declared_type=datetime))
 
-    feats.append(Attribute(name="startDate",
+    attribs.append(Attribute(name="startDate",
                            value=(getattr(getattr(getattr(sm, "startDateStruct", None), "date", None), "dt",
                                           None)),
                            declared_type=datetime))
@@ -314,9 +314,9 @@ def extract_metadata_from_study(study: Study) -> AttributesList:
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
     lead_name = lead.name if lead else None
-    feats.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
+    attribs.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
 
-    feats.append(Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
+    attribs.append(Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
                            declared_type=bool))
 
-    return feats
+    return attribs
