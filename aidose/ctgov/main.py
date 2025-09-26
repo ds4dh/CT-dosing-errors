@@ -1,9 +1,10 @@
-from aidose.ctgov.utils import (
+from aidose.ctgov.utils_download import (
     fetch_all_study_nctids_from_api_before_cutoff_date,
     download_all_studies_as_zip,
     unzip_as_separate_jsons_and_delete_zip_file,
     find_files_with_extension_recursively
 )
+
 from aidose.ctgov import (CTGOV_DATASET_RAW_PATH,
                           CTGOV_DATASET_PATH,
                           CTGOV_API_DOWNLOAD_BASE_URL,

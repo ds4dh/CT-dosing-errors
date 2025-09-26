@@ -1,4 +1,4 @@
-from aidose import RESOURCES_DIR
+from aidose import RESOURCES_DIR, DATASETS_ROOT
 from aidose.meddra import MEDDRA_CREATED_ARTIFACTS_DIR
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH
 
@@ -6,15 +6,18 @@ from datetime import datetime
 import os
 
 DATASET_NAME = "CT-DOSING-ERRORS"
-DATASET_VERSION = "0.1.0"
+DATASET_VERSION = "0.2.0"
 
-END_POINT_HF_DATASET_PATH = os.path.join(RESOURCES_DIR, DATASET_NAME, DATASET_VERSION)
+END_POINT_HF_DATASET_PATH = os.path.join(DATASETS_ROOT, DATASET_NAME, DATASET_VERSION)
 
 MEDDRA_ADE_LABELS_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
-MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"  # TODO: Align with AY about manual JJ stuff
+MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"
 
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
                                                "ctgov_nctids_list_filtered.txt")
+
+CTGOV_PROTOCOL_PDF_LINKS_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
+                                             "ctgov_protocol_pdfs_links.json")
 
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
 

@@ -10,6 +10,7 @@ else:
     os.makedirs(CTGOV_DATASET_PATH, exist_ok=True)
 
 CTGOV_DATASET_RAW_PATH = os.path.join(CTGOV_DATASET_PATH, "raw")
+CTGOV_DATASET_EXTENSIONS_PATH = os.path.join(CTGOV_DATASET_PATH, "extensions")
 
 CTGOV_API_DOWNLOAD_BASE_URL = "https://clinicaltrials.gov/api/v2"
 

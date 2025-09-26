@@ -1,6 +1,6 @@
 from aidose.ctgov import CTGOV_API_DOWNLOAD_BASE_URL
 
-from aidose.ctgov.utils import (
+from aidose.ctgov.utils_download import (
     fetch_all_study_nctids_from_api_before_cutoff_date,
 )
 

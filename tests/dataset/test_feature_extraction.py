@@ -9,7 +9,7 @@ from aidose.dataset.feature_extraction import (
     has_icf,
     get_location_details,
     _total_ade_population,  # intentionally testing internal helper
-    _label_count_features_from_positive_terms,
+    _get_ade_count_attributes_from_positive_terms,
     extract_features_for_training_from_study,
 )
 from aidose.dataset.utils import get_flow_group_descriptions
@@ -201,16 +201,17 @@ class FeaturesExtractorTestCase(unittest.TestCase):
         }
 
         canonical = ["Overdose", "Seizure", "Fever"]
-        feats = _label_count_features_from_positive_terms(
+        feats = _get_ade_count_attributes_from_positive_terms(
             positive_terms=positive_terms, canonical_label_cols=canonical
         )
 
         as_dict = {f.name: f.to_dict()["value"] for f in feats}
-        self.assertEqual(as_dict["label.Overdose"], 3)
-        self.assertEqual(as_dict["label.Seizure"], 6)  # 2 + 4 summed
-        self.assertEqual(as_dict["label.Fever"], 0)
+        self.assertEqual(as_dict["count.Overdose"], 3)
+        self.assertEqual(as_dict["count.Seizure"], 6)  # 2 + 4 summed
+        self.assertEqual(as_dict["count.Fever"], 0)
 
     def test_extract_features_for_study_basic_shape(self):
+        # TODO: Updte this broken test to follow the feature-metadata-label division.
         study = self._study_with_minimal_protocol()
 
         # Minimal ADE result (no events) just to satisfy extractor

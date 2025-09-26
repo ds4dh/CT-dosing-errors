@@ -1,7 +1,7 @@
 from aidose.dataset.utils import include_trial_after_sequential_filtering
 from aidose.dataset.utils import sanitize_number_from_string
 from aidose.dataset.utils import match_terms_fuzzy
-from aidose.ctgov.utils import get_study_path_by_nctid_and_raw_dir
+from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
 
 from aidose.ctgov.structures import Study, Status
 
@@ -14,7 +14,6 @@ import unittest
 import tqdm
 import os
 from datetime import datetime
-import json
 
 
 class CTGovSequentialFilteringTest(unittest.TestCase):
