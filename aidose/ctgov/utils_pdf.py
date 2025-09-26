@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import List, Tuple, Literal
 
-import pdfplumber
 import fitz  # PyMuPDF
 from PIL import Image
 
@@ -31,31 +30,21 @@ def extract_text_from_pdf(
     join_with: str = "\n\n",
 ) -> str:
     """
-    Extract text from a PDF.
+    Fast text extraction using PyMuPDF (MuPDF).
 
-    :param pdf_path: Path to the PDF file.
-    :param mode: 'simple' uses pdfplumber's default. 'layout' stitches words by line to better
-                 preserve columns (heuristic).
-    :param join_with: Separator placed between pages in the final string.
-    :return: A single string containing extracted text from all pages.
+    mode="simple": page.get_text("text")  -> plain reading order text.
+    mode="layout": page.get_text("blocks") -> block-wise; we order blocks top-left to bottom-right.
     """
     pages: List[str] = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
+    with fitz.open(pdf_path) as doc:
+        for page in doc:
             if mode == "simple":
-                pages.append(page.extract_text() or "")
+                pages.append(page.get_text("text") or "")
             else:
-                # Layout-aware: group words into lines by their top coordinate
-                words = page.extract_words(use_text_flow=True) or []
-                lines_by_y: dict[int, list[tuple[float, str]]] = {}
-                for w in words:
-                    y_key = int(round(w["top"]))
-                    lines_by_y.setdefault(y_key, []).append((w["x0"], w["text"]))
-                ordered_lines = []
-                for y in sorted(lines_by_y):
-                    line = " ".join(text for _, text in sorted(lines_by_y[y], key=lambda p: p[0]))
-                    ordered_lines.append(line)
-                pages.append("\n".join(ordered_lines))
+                # blocks: list of (x0, y0, x1, y1, "text", block_no, block_type, ...)
+                blocks = page.get_text("blocks") or []
+                blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))  # sort by y, then x
+                pages.append("\n".join(b[4].rstrip() for b in blocks if b[4]))
     return join_with.join(pages)
 
 
