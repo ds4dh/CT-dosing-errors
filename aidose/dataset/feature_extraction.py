@@ -16,6 +16,10 @@ from aidose.ctgov.utils_protocol import (has_protocol,
                                          get_protocol_arm_groups,
                                          get_protocol_interventions)
 
+from aidose.ctgov.utils_protocol import concatenate_pdf_texts_for_nctid, get_large_protocols_pdf_links
+
+from aidose.ctgov import CTGOV_DATASET_EXTENSIONS_PATH
+
 from .utils import get_location_details, get_study_completion_date
 
 from .attribute import Attribute, AttributesList
@@ -26,6 +30,7 @@ from statsmodels.stats.proportion import proportion_confint
 
 from typing import Any, List, Sequence, Dict
 from enum import Enum
+import os
 from datetime import datetime
 
 JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
@@ -192,25 +197,29 @@ def extract_features_for_training_from_study(
 
     # --- Description Module ---
     attribs.append(Attribute(name="briefSummary",
-                           value=ps.descriptionModule.briefSummary,
-                           declared_type=str))
+                             value=ps.descriptionModule.briefSummary,
+                             declared_type=str))
 
     attribs.append(Attribute(name="detailedDescription",
-                           value=ps.descriptionModule.detailedDescription,
-                           declared_type=str))
+                             value=ps.descriptionModule.detailedDescription,
+                             declared_type=str))
     # --- Conditions Module ---
     attribs.append(Attribute(name="conditions",
-                           value=" ".join(ps.conditionsModule.conditions) if ps and ps.conditionsModule else None,
-                           declared_type=str))
+                             value=" ".join(ps.conditionsModule.conditions) if ps and ps.conditionsModule else None,
+                             declared_type=str))
 
     attribs.append(Attribute(name="conditionsKeywords",
-                           value=" ".join(ps.conditionsModule.keywords) if ps and ps.conditionsModule else None,
-                           declared_type=str))
+                             value=" ".join(ps.conditionsModule.keywords) if ps and ps.conditionsModule else None,
+                             declared_type=str))
 
-    # --- Documents ---
-    attribs.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
-    attribs.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
-    attribs.append(Attribute(name="hasIcf", value=has_icf(study), declared_type=bool))
+    # --- Protocol PDF's extraction ---
+    nctid = ps.identificationModule.nctId
+
+    if has_protocol(study):
+        pdf_text = concatenate_pdf_texts_for_nctid(nctid, CTGOV_DATASET_EXTENSIONS_PATH)
+    else:
+        pdf_text = None
+    attribs.append(Attribute(name="protocolPdfText", value=pdf_text, declared_type=str))
 
     # --- Arms & interventions ---
     arms = get_protocol_arm_groups(study)
@@ -220,13 +229,13 @@ def extract_features_for_training_from_study(
 
     arm_descriptions = [getattr(arm, "description", None) for arm in arms]
     attribs.append(Attribute(name="armDescriptions",
-                           value=" ".join(
-                               f"arm {i + 1}: {s}" for i, s in
-                               enumerate(arm_descriptions)) if arm_descriptions else None,
-                           declared_type=str))
+                             value=" ".join(
+                                 f"arm {i + 1}: {s}" for i, s in
+                                 enumerate(arm_descriptions)) if arm_descriptions else None,
+                             declared_type=str))
     arm_group_types = [getattr(arm, "type", None) for arm in arms]
     attribs.append(Attribute(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
-                           declared_type=ArmGroupType))
+                             declared_type=ArmGroupType))
 
     interventions = get_protocol_interventions(study)
     attribs.append(Attribute(name="numInterventions", value=len(interventions), declared_type=int))
@@ -236,14 +245,14 @@ def extract_features_for_training_from_study(
 
     i_descriptions = [getattr(itv, "description", None) for itv in interventions]
     attribs.append(Attribute(name="interventionDescriptions",
-                           value=" ".join(f"intervention {i + 1}: {s}" for i, s in
-                                          enumerate(i_descriptions)) if i_descriptions else None,
-                           declared_type=str))
+                             value=" ".join(f"intervention {i + 1}: {s}" for i, s in
+                                            enumerate(i_descriptions)) if i_descriptions else None,
+                             declared_type=str))
     i_names = [getattr(itv, "name", None) for itv in interventions]
     attribs.append(Attribute(name="interventionNames",
-                           value=" ".join(
-                               f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
-                           declared_type=str))
+                             value=" ".join(
+                                 f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
+                             declared_type=str))
 
     # --- Locations ---
     loc_details = get_location_details(study)
@@ -293,7 +302,7 @@ def extract_metadata_from_study(study: Study) -> AttributesList:
 
     # --- Identification ---
     ps = study.protocolSection
-    nctid = ps.identificationModule.nctId if ps and ps.identificationModule else None
+    nctid = ps.identificationModule.nctId
     attribs.append(Attribute(name="nctId", value=nctid, declared_type=str))
 
     # --- Status ---
@@ -303,13 +312,13 @@ def extract_metadata_from_study(study: Study) -> AttributesList:
     completion_date = get_study_completion_date(sm)
 
     attribs.append(Attribute(name="completionDate",
-                           value=completion_date,
-                           declared_type=datetime))
+                             value=completion_date,
+                             declared_type=datetime))
 
     attribs.append(Attribute(name="startDate",
-                           value=(getattr(getattr(getattr(sm, "startDateStruct", None), "date", None), "dt",
-                                          None)),
-                           declared_type=datetime))
+                             value=(getattr(getattr(getattr(sm, "startDateStruct", None), "date", None), "dt",
+                                            None)),
+                             declared_type=datetime))
 
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
@@ -317,6 +326,15 @@ def extract_metadata_from_study(study: Study) -> AttributesList:
     attribs.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
 
     attribs.append(Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
-                           declared_type=bool))
+                             declared_type=bool))
+
+    # --- Documents and Protocol PDF's ---
+    attribs.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
+    attribs.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
+    attribs.append(Attribute(name="hasIcf", value=has_icf(study), declared_type=bool))
+    pdf_links = get_large_protocols_pdf_links(study, check_link_status=False)
+    attribs.append(Attribute(name="protocolPdfLinks",
+                             value=" ".join(pdf_links) if pdf_links else None,
+                             declared_type=str))
 
     return attribs

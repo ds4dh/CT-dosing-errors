@@ -43,8 +43,8 @@ from aidose.ctgov.constants import (CTGOV_NCTIDS_LIST_ALL_PATH,
 from aidose.ctgov.structures import Study
 from aidose.ctgov import download_registry_from_api
 from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
-from aidose.ctgov.utils_protocol import get_large_protocols_pdf_links
-from aidose.ctgov.utils_pdf import extract_text_from_pdf
+from aidose.ctgov.utils_protocol import (get_large_protocols_pdf_links,
+                                         get_protocol_pdfs_saved_dir_for_nctid)
 
 from datasets import Dataset, Features, DatasetDict
 
@@ -152,11 +152,10 @@ def main():
     os.makedirs(CTGOV_DATASET_EXTENSIONS_PATH, exist_ok=True)
     for nctid, pdf_links in tqdm.tqdm(nctid_protocol_pdf_map.items(),
                                       desc="Downloading protocol PDFs for eligible trials if not already done ..."):
-        parent_identifier = nctid[-2:]
         for link in pdf_links:
             pdf_name = link.split("/")[-1]
-            pdf_save_path = os.path.join(CTGOV_DATASET_EXTENSIONS_PATH, "protocol-pdfs",
-                                         parent_identifier, nctid, pdf_name)
+            pdf_save_path = os.path.join(
+                get_protocol_pdfs_saved_dir_for_nctid(nctid, CTGOV_DATASET_EXTENSIONS_PATH), pdf_name)
             if not os.path.exists(pdf_save_path):
                 os.makedirs(os.path.dirname(pdf_save_path), exist_ok=True)
                 with urllib.request.urlopen(link) as resp:
