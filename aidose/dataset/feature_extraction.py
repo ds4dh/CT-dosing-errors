@@ -50,15 +50,13 @@ def _total_ade_population(ade_result: ADEAnalysisResultForStudy) -> int | None:
     return sum(group.population for group in ade_result.ade_by_group.values())
 
 
-def _label_count_features_from_positive_terms(
+def _get_ade_count_attributes_from_positive_terms(
         *,
         positive_terms: Dict[str, Any],
         canonical_label_cols: Sequence[str],
 ) -> List[Attribute]:
     """
-    Build features for each canonical label:
-      Feature(name=f"label.{LABEL}", value=<sum numAffected>, declared_type=int)
-    If a label is unused for the study, value=0.
+    Build attributes for each canonical label:
     """
     # TODO: This is murky.
     attribs: List[Attribute] = []
@@ -80,8 +78,8 @@ def _label_count_features_from_positive_terms(
         if best_label in counts:
             counts[best_label] += num_aff_int
 
-    for label in canonical_label_cols:
-        attribs.append(Attribute(name=f"label.{label}", value=counts.get(label, 0), declared_type=int))
+    for col in canonical_label_cols:
+        attribs.append(Attribute(name=f"count.{col}", value=counts.get(col, 0), declared_type=int))
     return attribs
 
 
@@ -282,7 +280,7 @@ def extract_labels_from_study(
     attribs.append(Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
     # --- canonical label counts ---
-    attribs.extend(_label_count_features_from_positive_terms(
+    attribs.extend(_get_ade_count_attributes_from_positive_terms(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
     ))
