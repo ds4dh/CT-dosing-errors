@@ -1,7 +1,9 @@
 from aidose.ctgov.structures import Study
+from aidose.ctgov.utils_pdf import extract_text_from_pdf
 
-from typing import Dict, List, Tuple, Any
+from typing import List, Any
 import requests
+import os
 
 
 # =========================
@@ -72,3 +74,20 @@ def get_large_protocols_pdf_links(study: Study, check_link_status: bool = False)
             links.append(link)
 
     return links if links else None
+
+
+def get_protocol_pdfs_saved_dir_for_nctid(nctid: str, extensions_dir: str) -> str | None:
+    parent_identifier = nctid[-2:]
+    return os.path.join(extensions_dir, "protocol-pdfs", parent_identifier, nctid)
+
+
+def concatenate_pdf_texts_for_nctid(trial_nctid: str, extensions_dir: str) -> str | None:
+    pdf_dir = get_protocol_pdfs_saved_dir_for_nctid(trial_nctid, extensions_dir)
+    if not os.path.exists(pdf_dir):
+        return None
+    all_texts = []
+    for pdf_name in [_file for _file in os.listdir(pdf_dir) if _file.endswith(".pdf")]:
+        pdf_path = os.path.join(pdf_dir, pdf_name)
+        text = extract_text_from_pdf(pdf_path)
+        all_texts.append("{}: \n{}".format(pdf_name, text))
+    return "\n".join(all_texts) if all_texts else None
