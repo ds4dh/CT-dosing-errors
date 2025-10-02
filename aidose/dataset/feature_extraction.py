@@ -103,7 +103,7 @@ def add_new_label_features_from_existing(attribs: AttributesList,
         return lower
 
     sum_dosing_error = Attribute(name="sum_dosing_errors",
-                                 value=sum([feat.value for feat in attribs if feat.name.startswith("label.")]),
+                                 value=sum([feat.value for feat in attribs if feat.name.startswith("count.")]),
                                  declared_type=int)
 
     ct_level_ade_population = next((feat.value for feat in attribs if feat.name == "ct_level_ade_population"))
@@ -309,7 +309,6 @@ def extract_attributes_from_study(
         Attribute(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
 
     # --- ADE enrichment ---
-    # TODO: label-related and meta-related fields will be considered separately.
     ade = ade_analysis_results_for_study
     attribs_labels.append(Attribute(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
     attribs_labels.append(
