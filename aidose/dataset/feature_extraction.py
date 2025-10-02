@@ -138,15 +138,24 @@ def add_new_label_features_from_existing(attribs: AttributesList,
 # Main extractors
 # =========================
 
-def extract_features_for_training_from_study(
+def extract_attributes_from_study(
         study: Study,
+        canonical_label_cols: Sequence[str],
+        ade_analysis_results_for_study: ADEAnalysisResultForStudy,
+        alpha_wilson: float,
+        wilson_proba_threshold: float
 ) -> AttributesList:
     """
-    Build a typed feature list for a single Study.
-    NOTE: This function does NOT perform one-hot/multi-hot expansion.
-          Call `features.expand_enums()` later if you want hot encodings.
+    Extract attributes from a Study.
+    This includes:
+      - features for training
+      - labels
+      - metadata (non-training features)
     """
-    attribs = AttributesList()
+
+    attribs_features = AttributesList()
+    attribs_labels = AttributesList()
+    attribs_metadata = AttributesList()
 
     ps = study.protocolSection
 
@@ -155,184 +164,172 @@ def extract_features_for_training_from_study(
 
     # phases: list[Phase] (keep as Enum list; expand later)
     phases_list = list(design.phases) if (design and design.phases) else None
-    attribs.append(Attribute(name="phases", value=phases_list, declared_type=Phase))
+    attribs_features.append(Attribute(name="phases", value=phases_list, declared_type=Phase))
 
     enroll = design.enrollmentInfo if design and design.enrollmentInfo else None
-    attribs.append(Attribute(name="enrollmentCount", value=(enroll.count if enroll else None), declared_type=int))
+    attribs_features.append(
+        Attribute(name="enrollmentCount", value=(enroll.count if enroll else None), declared_type=int))
 
     d_info = design.designInfo if design and design.designInfo else None
     # TODO: Enum should be used for allocation and interventionModel:
-    attribs.append(Attribute(name="allocation", value=(d_info.allocation if d_info else None), declared_type=str))
-    attribs.append(
+    attribs_features.append(
+        Attribute(name="allocation", value=(d_info.allocation if d_info else None), declared_type=str))
+    attribs_features.append(
         Attribute(name="interventionModel", value=(d_info.interventionModel if d_info else None), declared_type=str))
-    attribs.append(
+    attribs_features.append(
         Attribute(name="primaryPurpose", value=(d_info.primaryPurpose if d_info else None),
                   declared_type=PrimaryPurpose))
 
     masking_val = d_info.maskingInfo.masking if d_info and d_info.maskingInfo else None
-    attribs.append(Attribute(name="masking", value=masking_val, declared_type=Masking))
+    attribs_features.append(Attribute(name="masking", value=masking_val, declared_type=Masking))
+
+    # --- Identification ---
+    nctid = ps.identificationModule.nctId
+    attribs_metadata.append(Attribute(name="nctId", value=nctid, declared_type=str))
+
+    # --- Status ---
+    sm = ps.statusModule
+    attribs_metadata.append(Attribute(name="overallStatus", value=sm.overallStatus, declared_type=Status))
+
+    completion_date = get_study_completion_date(sm)
+
+    attribs_metadata.append(Attribute(name="completionDate",
+                                      value=completion_date,
+                                      declared_type=datetime))
+
+    attribs_metadata.append(Attribute(name="startDate",
+                                      value=(getattr(getattr(getattr(sm, "startDateStruct", None), "date", None), "dt",
+                                                     None)),
+                                      declared_type=datetime))
+
+    sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
+    lead = sc.leadSponsor if sc and sc.leadSponsor else None
+    lead_name = lead.name if lead else None
+    attribs_metadata.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
+
+    attribs_metadata.append(
+        Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
+                  declared_type=bool))
 
     # --- Eligibility ---
     elig = ps.eligibilityModule if ps and ps.eligibilityModule else None
-    attribs.append(
+    attribs_features.append(
         Attribute(name="healthyVolunteers", value=(elig.healthyVolunteers if elig else None), declared_type=bool))
-    attribs.append(Attribute(name="sex", value=(elig.sex if elig else None), declared_type=Sex))
+    attribs_features.append(Attribute(name="sex", value=(elig.sex if elig else None), declared_type=Sex))
 
     std_ages = list(elig.stdAges) if (elig and elig.stdAges) else None
     if std_ages and isinstance(std_ages[0], Enum):  # cautious
-        attribs.append(Attribute(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
+        attribs_features.append(Attribute(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
 
     # --- Sponsor ---
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
     lead_name = lead.name if lead else None
-    attribs.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
-    attribs.append(Attribute(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
+    attribs_features.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
+    attribs_features.append(
+        Attribute(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
 
     oversight = ps.oversightModule if ps and ps.oversightModule else None
-    attribs.append(
+    attribs_features.append(
         Attribute(name="oversightHasDmc", value=(oversight.oversightHasDmc if oversight else None), declared_type=bool))
 
     # --- Description Module ---
-    attribs.append(Attribute(name="briefSummary",
-                             value=ps.descriptionModule.briefSummary,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="briefSummary",
+                                      value=ps.descriptionModule.briefSummary,
+                                      declared_type=str))
 
-    attribs.append(Attribute(name="detailedDescription",
-                             value=ps.descriptionModule.detailedDescription,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="detailedDescription",
+                                      value=ps.descriptionModule.detailedDescription,
+                                      declared_type=str))
+
     # --- Conditions Module ---
-    attribs.append(Attribute(name="conditions",
-                             value=" ".join(ps.conditionsModule.conditions) if ps and ps.conditionsModule else None,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="conditions",
+                                      value=" ".join(
+                                          ps.conditionsModule.conditions) if ps and ps.conditionsModule else None,
+                                      declared_type=str))
 
-    attribs.append(Attribute(name="conditionsKeywords",
-                             value=" ".join(ps.conditionsModule.keywords) if ps and ps.conditionsModule else None,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="conditionsKeywords",
+                                      value=" ".join(
+                                          ps.conditionsModule.keywords) if ps and ps.conditionsModule else None,
+                                      declared_type=str))
 
-    # --- Protocol PDF's extraction ---
-    nctid = ps.identificationModule.nctId
-
+    # --- Documents and Protocol PDF's extraction ---
     if has_protocol(study):
         pdf_text = concatenate_pdf_texts_for_nctid(nctid, CTGOV_DATASET_EXTENSIONS_PATH)
     else:
         pdf_text = None
-    attribs.append(Attribute(name="protocolPdfText", value=pdf_text, declared_type=str))
+    attribs_features.append(Attribute(name="protocolPdfText", value=pdf_text, declared_type=str))
+
+    attribs_metadata.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
+    attribs_metadata.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
+    attribs_metadata.append(Attribute(name="hasIcf", value=has_icf(study), declared_type=bool))
+    pdf_links = get_large_protocols_pdf_links(study, check_link_status=False)
+    attribs_metadata.append(Attribute(name="protocolPdfLinks",
+                                      value=" ".join(pdf_links) if pdf_links else None,
+                                      declared_type=str))
 
     # --- Arms & interventions ---
     arms = get_protocol_arm_groups(study)
 
     num_arms = len(arms)
-    attribs.append(Attribute(name="numArms", value=num_arms, declared_type=int))
+    attribs_features.append(Attribute(name="numArms", value=num_arms, declared_type=int))
 
     arm_descriptions = [getattr(arm, "description", None) for arm in arms]
-    attribs.append(Attribute(name="armDescriptions",
-                             value=" ".join(
-                                 f"arm {i + 1}: {s}" for i, s in
-                                 enumerate(arm_descriptions)) if arm_descriptions else None,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="armDescriptions",
+                                      value=" ".join(
+                                          f"arm {i + 1}: {s}" for i, s in
+                                          enumerate(arm_descriptions)) if arm_descriptions else None,
+                                      declared_type=str))
     arm_group_types = [getattr(arm, "type", None) for arm in arms]
-    attribs.append(Attribute(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
-                             declared_type=ArmGroupType))
+    attribs_features.append(Attribute(name="armGroupTypes", value=(arm_group_types if arm_group_types else None),
+                                      declared_type=ArmGroupType))
 
     interventions = get_protocol_interventions(study)
-    attribs.append(Attribute(name="numInterventions", value=len(interventions), declared_type=int))
+    attribs_features.append(Attribute(name="numInterventions", value=len(interventions), declared_type=int))
 
     itypes = [getattr(itv, "type", None) for itv in interventions]
-    attribs.append(Attribute(name="interventionTypes", value=itypes, declared_type=InterventionType))
+    attribs_features.append(Attribute(name="interventionTypes", value=itypes, declared_type=InterventionType))
 
     i_descriptions = [getattr(itv, "description", None) for itv in interventions]
-    attribs.append(Attribute(name="interventionDescriptions",
-                             value=" ".join(f"intervention {i + 1}: {s}" for i, s in
-                                            enumerate(i_descriptions)) if i_descriptions else None,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="interventionDescriptions",
+                                      value=" ".join(f"intervention {i + 1}: {s}" for i, s in
+                                                     enumerate(i_descriptions)) if i_descriptions else None,
+                                      declared_type=str))
     i_names = [getattr(itv, "name", None) for itv in interventions]
-    attribs.append(Attribute(name="interventionNames",
-                             value=" ".join(
-                                 f"intervention {i + 1}: {s}" for i, s in enumerate(i_names)) if i_names else None,
-                             declared_type=str))
+    attribs_features.append(Attribute(name="interventionNames",
+                                      value=" ".join(
+                                          f"intervention {i + 1}: {s}" for i, s in
+                                          enumerate(i_names)) if i_names else None,
+                                      declared_type=str))
 
     # --- Locations ---
     loc_details = get_location_details(study)
-    attribs.append(Attribute(name="numLocations", value=len(loc_details), declared_type=int))
-    attribs.append(
+    attribs_features.append(Attribute(name="numLocations", value=len(loc_details), declared_type=int))
+    attribs_features.append(
         Attribute(name="locationDetails", value="\n".join(loc_details) if loc_details else None, declared_type=str))
-
-    return attribs
-
-
-def extract_labels_from_study(
-        canonical_label_cols: Sequence[str],
-        ade_analysis_results_for_study: ADEAnalysisResultForStudy,
-        alpha_wilson: float,
-        wilson_proba_threshold: float
-) -> AttributesList:
-    """
-    Extract label-related attributes from a Study.
-    """
-    attribs = AttributesList()
 
     # --- ADE enrichment ---
     # TODO: label-related and meta-related fields will be considered separately.
     ade = ade_analysis_results_for_study
-    attribs.append(Attribute(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
-    attribs.append(Attribute(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
-    attribs.append(Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
+    attribs_labels.append(Attribute(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
+    attribs_labels.append(
+        Attribute(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
+    attribs_labels.append(
+        Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
     # --- canonical label counts ---
-    attribs.extend(_get_ade_count_attributes_from_positive_terms(
+    attribs_labels.extend(_get_ade_count_attributes_from_positive_terms(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
     ))
+    # Creating new label-related fields based on existing ones
+    attribs_labels = add_new_label_features_from_existing(attribs_labels, alpha_wilson, wilson_proba_threshold)
 
-    # --- Creating new label-related fields based on existing ones ---
-    attribs = add_new_label_features_from_existing(attribs, alpha_wilson, wilson_proba_threshold)
+    # --- Renaming attributes with descriptive prefixes ---
+    all_attribs = AttributesList(
+        attribs_features.with_prefix("f.")
+        + attribs_labels.with_prefix("l.")
+        + attribs_metadata.with_prefix("m.")
+    )
 
-    return attribs
-
-
-def extract_metadata_from_study(study: Study) -> AttributesList:
-    """
-    Extract metadata features from a Study.
-    These are non-training features.
-    """
-    attribs = AttributesList()
-
-    # --- Identification ---
-    ps = study.protocolSection
-    nctid = ps.identificationModule.nctId
-    attribs.append(Attribute(name="nctId", value=nctid, declared_type=str))
-
-    # --- Status ---
-    sm = ps.statusModule
-    attribs.append(Attribute(name="overallStatus", value=sm.overallStatus, declared_type=Status))
-
-    completion_date = get_study_completion_date(sm)
-
-    attribs.append(Attribute(name="completionDate",
-                             value=completion_date,
-                             declared_type=datetime))
-
-    attribs.append(Attribute(name="startDate",
-                             value=(getattr(getattr(getattr(sm, "startDateStruct", None), "date", None), "dt",
-                                            None)),
-                             declared_type=datetime))
-
-    sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
-    lead = sc.leadSponsor if sc and sc.leadSponsor else None
-    lead_name = lead.name if lead else None
-    attribs.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
-
-    attribs.append(Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
-                             declared_type=bool))
-
-    # --- Documents and Protocol PDF's ---
-    attribs.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
-    attribs.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
-    attribs.append(Attribute(name="hasIcf", value=has_icf(study), declared_type=bool))
-    pdf_links = get_large_protocols_pdf_links(study, check_link_status=False)
-    attribs.append(Attribute(name="protocolPdfLinks",
-                             value=" ".join(pdf_links) if pdf_links else None,
-                             declared_type=str))
-
-    return attribs
+    return all_attribs
