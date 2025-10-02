@@ -174,6 +174,9 @@ class Attribute:
         # should be unreachable due to __post_init__
         raise TypeError("Invalid enum value state for multi-hot.")
 
+    def with_name(self, new_name: str) -> "Attribute":
+        return Attribute(new_name, self.value, self.declared_type)
+
 
 class AttributesList(list[Attribute]):
     def expand_enums(self) -> AttributesList:
@@ -199,3 +202,7 @@ class AttributesList(list[Attribute]):
     def get_names(self) -> List[str]:
         """Return a list of attribute names in order."""
         return [f.name for f in self]
+
+    def with_prefix(self, prefix: str) -> AttributesList:
+        """Return a new AttributesList where each Attribute's name is prefixed."""
+        return AttributesList([attr.with_name(f"{prefix}{attr.name}") for attr in self])

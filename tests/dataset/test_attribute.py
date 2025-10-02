@@ -261,5 +261,117 @@ class FeaturesListUnitTest(unittest.TestCase):
         )
 
 
+class AttributeRenamingUnitTest(unittest.TestCase):
+    def test_with_name_returns_new_instance(self):
+        a1 = Attribute(name="class", value="A", declared_type=str)
+        a2 = a1.with_name("labels.class")
+
+        # new instance, unchanged value/type
+        self.assertIsNot(a1, a2)
+        self.assertEqual(a2.name, "labels.class")
+        self.assertEqual(a2.value, "A")
+        self.assertIs(a2.declared_type, str)
+
+        # original remains unchanged
+        self.assertEqual(a1.name, "class")
+        self.assertEqual(a1.value, "A")
+        self.assertIs(a1.declared_type, str)
+
+    def test_with_name_respects_enum_prefix_usage(self):
+        class Local(Enum):
+            X = "x"
+            Y = "y"
+
+        a = Attribute("cat", Local.X, Local)
+        renamed = a.with_name("labels.cat")
+        # one-hot names should use the renamed attribute prefix
+        self.assertEqual([f.name for f in renamed.as_one_hot()],
+                         ["labels.cat.X", "labels.cat.Y"])
+        # multi-hot too
+        self.assertEqual([f.name for f in renamed.as_multi_hot()],
+                         ["labels.cat.X", "labels.cat.Y"])
+
+
+class AttributesListPrefixAndConcatUnitTest(unittest.TestCase):
+    def test_with_prefix_returns_new_list_and_preserves_original(self):
+        feats = AttributesList([
+            Attribute("id", 1, int),
+            Attribute("title", "A", str),
+        ])
+
+        labeled = feats.with_prefix("labels.")
+        # New instance, original unchanged
+        self.assertIsInstance(labeled, AttributesList)
+        self.assertIsNot(labeled, feats)
+        self.assertEqual(feats.get_names(), ["id", "title"])
+        self.assertEqual(labeled.get_names(), ["labels.id", "labels.title"])
+
+    def test_with_prefix_before_expand_enums(self):
+        class Shade(Enum):
+            LIGHT = "light"
+            DARK = "dark"
+
+        feats = AttributesList([
+            Attribute("shade", Shade.DARK, Shade),  # enum
+            Attribute("count", 3, int),
+        ])
+
+        labeled = feats.with_prefix("labels.")
+        expanded = labeled.expand_enums()
+
+        # Enum one-hot names should reflect the prefixed name
+        self.assertEqual(
+            expanded.get_names(),
+            ["labels.shade.LIGHT", "labels.shade.DARK", "labels.count"]
+        )
+        self.assertEqual(expanded.get_values(), [False, True, 3])
+        self.assertEqual(expanded.get_types()[:2], [bool, bool])
+        self.assertIs(expanded[2].declared_type, int)
+
+    def test_concat_by_wrapping_preserves_type(self):
+        labels = AttributesList([
+            Attribute("class", "A", str),
+            Attribute("id", 123, int),
+        ]).with_prefix("labels.")
+
+        features = AttributesList([
+            Attribute("height", 180, int),
+            Attribute("is_active", True, bool),
+        ])
+
+        # Using Python '+' returns a plain list; wrap it back to keep AttributesList
+        all_feats = AttributesList(labels + features)
+
+        self.assertIsInstance(all_feats, AttributesList)
+        self.assertEqual(
+            all_feats.get_names(),
+            ["labels.class", "labels.id", "height", "is_active"]
+        )
+        self.assertEqual(all_feats.get_values(), ["A", 123, 180, True])
+        self.assertEqual(all_feats.get_types(), [str, int, int, bool])
+
+    def test_expand_enums_after_concat(self):
+        class Color(Enum):
+            RED = "r"
+            BLUE = "b"
+
+        labels = AttributesList([
+            Attribute("class", "A", str),
+        ]).with_prefix("labels.")
+
+        feats = AttributesList([
+            Attribute("color", Color.BLUE, Color),
+        ])
+
+        all_feats = AttributesList(labels + feats).expand_enums()
+        # Expect: labels.class (unchanged), then one-hot for color
+        self.assertEqual(
+            all_feats.get_names(),
+            ["labels.class", "color.RED", "color.BLUE"]
+        )
+        self.assertEqual(all_feats.get_values(), ["A", False, True])
+        self.assertEqual(all_feats.get_types(), [str, bool, bool])
+
+
 if __name__ == "__main__":
     unittest.main()
