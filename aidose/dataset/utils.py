@@ -403,7 +403,7 @@ def hf_type_map(t: type) -> str:
     if t is int:
         return "int64"
     if t is float:
-        return "float64"
+        return "float32"
     if t is bool:
         return "bool"
     if t is datetime:

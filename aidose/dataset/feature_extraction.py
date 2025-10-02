@@ -28,18 +28,17 @@ from .ade_labeling import term_to_best_label_map_from_positive_terms
 
 from statsmodels.stats.proportion import proportion_confint
 
-from typing import Any, List, Sequence, Dict
+from typing import Any, Sequence, Dict, Tuple
 from enum import Enum
-import os
 from datetime import datetime
 
 JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
 
-CANONICAL_COUNT_PREFIX = "count."
+CANONICAL_COUNT_PREFIX = "count_"
 
-ATTRIBS_FEATURE_PREFIX = "f."
-ATTRIBS_LABEL_PREFIX = "l."
-ATTRIBS_METADATA_PREFIX = "m."
+ATTRIBS_FEATURE_PREFIX = "FEATURE_"
+ATTRIBS_LABEL_PREFIX = "LABEL_"
+ATTRIBS_METADATA_PREFIX = "METADATA_"
 
 
 # TODO: Certain fields and Enum-types are missing in the feature extraction, e.g., ResponsibleParty, Role,
@@ -56,16 +55,16 @@ def _total_ade_population(ade_result: ADEAnalysisResultForStudy) -> int | None:
     return sum(group.population for group in ade_result.ade_by_group.values())
 
 
-def _get_ade_count_attributes_from_positive_terms(
+def get_ade_count_attributes_from_positive_terms(
         *,
         positive_terms: Dict[str, Any],
         canonical_label_cols: Sequence[str],
-) -> List[Attribute]:
+) -> AttributesList:
     """
     Build attributes for each canonical label:
     """
     # TODO: This is murky.
-    attribs: List[Attribute] = []
+    attribs = AttributesList()
     term_to_label = term_to_best_label_map_from_positive_terms(positive_terms)
 
     counts: Dict[str, int] = {lbl: 0 for lbl in canonical_label_cols}
@@ -86,13 +85,15 @@ def _get_ade_count_attributes_from_positive_terms(
 
     for col in canonical_label_cols:
         attribs.append(Attribute(name=f"{CANONICAL_COUNT_PREFIX}{col}", value=counts.get(col, 0), declared_type=int))
+
     return attribs
 
 
-def add_new_label_features_from_existing(attribs: AttributesList,
-                                         alpha_wilson: float,
-                                         wilson_proba_threshold: float
-                                         ) -> AttributesList:
+def get_additional_attribs_from_ade_counts(count_attribs: AttributesList,
+                                           ct_level_ade_population: int | None,
+                                           alpha_wilson: float,
+                                           wilson_proba_threshold: float
+                                           ) -> Tuple[Attribute, Attribute, Attribute, Attribute]:
     def get_wilson_lower_bound(x: int, n: int, alpha: float) -> float:
         """
         Computes the lower bound of the Wilson confident interval.
@@ -110,10 +111,9 @@ def add_new_label_features_from_existing(attribs: AttributesList,
 
     sum_dosing_error = Attribute(name="sum_dosing_errors",
                                  value=sum(
-                                     [feat.value for feat in attribs if feat.name.startswith(CANONICAL_COUNT_PREFIX)]),
+                                     [feat.value for feat in count_attribs if
+                                      feat.name.startswith(CANONICAL_COUNT_PREFIX)]),
                                  declared_type=int)
-
-    ct_level_ade_population = next((feat.value for feat in attribs if feat.name == "ct_level_ade_population"))
 
     dosing_error_rate = Attribute(name="dosing_error_rate",
                                   value=(
@@ -133,12 +133,7 @@ def add_new_label_features_from_existing(attribs: AttributesList,
                              # TODO: Check this with Félicien
                              declared_type=int)
 
-    attribs.append(sum_dosing_error)
-    attribs.append(dosing_error_rate)
-    attribs.append(wilson_lower_bound)
-    attribs.append(wilson_label)
-
-    return attribs
+    return sum_dosing_error, dosing_error_rate, wilson_label, wilson_lower_bound
 
 
 # =========================
@@ -209,8 +204,6 @@ def extract_attributes_from_study(
                                                      None)),
                                       declared_type=datetime))
 
-
-
     # --- Eligibility ---
     elig = ps.eligibilityModule if ps and ps.eligibilityModule else None
     attribs_features.append(
@@ -222,7 +215,6 @@ def extract_attributes_from_study(
         attribs_features.append(Attribute(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
 
     # --- Sponsor ---
-
 
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
@@ -324,12 +316,19 @@ def extract_attributes_from_study(
         Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
     # --- canonical label counts ---
-    attribs_labels.extend(_get_ade_count_attributes_from_positive_terms(
+    attribs_ade_counts = get_ade_count_attributes_from_positive_terms(
         positive_terms=ade.positive_terms,
         canonical_label_cols=canonical_label_cols,
-    ))
-    # Creating new label-related fields based on existing ones
-    attribs_labels = add_new_label_features_from_existing(attribs_labels, alpha_wilson, wilson_proba_threshold)
+    )
+
+    # Creating new ADE-related fields based on existing ones
+    ct_pop = next((a.value for a in attribs_labels if a.name == "ct_level_ade_population"), None)
+    sum_dosing_error, dosing_error_rate, wilson_label, wilson_lower_bound = get_additional_attribs_from_ade_counts(
+        attribs_ade_counts, ct_pop, alpha_wilson, wilson_proba_threshold)
+
+    attribs_labels.extend([sum_dosing_error, dosing_error_rate, wilson_label])
+    attribs_metadata.extend(attribs_ade_counts)
+    attribs_metadata.append(wilson_lower_bound)
 
     # --- Renaming attributes with descriptive prefixes ---
     all_attribs = AttributesList(
