@@ -35,6 +35,12 @@ from datetime import datetime
 
 JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
 
+CANONICAL_COUNT_PREFIX = "count."
+
+ATTRIBS_FEATURE_PREFIX = "f."
+ATTRIBS_LABEL_PREFIX = "l."
+ATTRIBS_METADATA_PREFIX = "m."
+
 
 # TODO: Certain fields and Enum-types are missing in the feature extraction, e.g., ResponsibleParty, Role,
 #  MoreInfoModule, CertaintyModule, etc.
@@ -79,7 +85,7 @@ def _get_ade_count_attributes_from_positive_terms(
             counts[best_label] += num_aff_int
 
     for col in canonical_label_cols:
-        attribs.append(Attribute(name=f"count.{col}", value=counts.get(col, 0), declared_type=int))
+        attribs.append(Attribute(name=f"{CANONICAL_COUNT_PREFIX}{col}", value=counts.get(col, 0), declared_type=int))
     return attribs
 
 
@@ -103,7 +109,8 @@ def add_new_label_features_from_existing(attribs: AttributesList,
         return lower
 
     sum_dosing_error = Attribute(name="sum_dosing_errors",
-                                 value=sum([feat.value for feat in attribs if feat.name.startswith("count.")]),
+                                 value=sum(
+                                     [feat.value for feat in attribs if feat.name.startswith(CANONICAL_COUNT_PREFIX)]),
                                  declared_type=int)
 
     ct_level_ade_population = next((feat.value for feat in attribs if feat.name == "ct_level_ade_population"))
@@ -326,9 +333,9 @@ def extract_attributes_from_study(
 
     # --- Renaming attributes with descriptive prefixes ---
     all_attribs = AttributesList(
-        attribs_features.with_prefix("f.")
-        + attribs_labels.with_prefix("l.")
-        + attribs_metadata.with_prefix("m.")
+        attribs_features.with_prefix(ATTRIBS_FEATURE_PREFIX)
+        + attribs_labels.with_prefix(ATTRIBS_LABEL_PREFIX)
+        + attribs_metadata.with_prefix(ATTRIBS_METADATA_PREFIX)
     )
 
     return all_attribs
