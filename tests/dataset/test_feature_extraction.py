@@ -9,8 +9,12 @@ from aidose.dataset.feature_extraction import (
     has_icf,
     get_location_details,
     _total_ade_population,  # intentionally testing internal helper
-    _get_ade_count_attributes_from_positive_terms,
-    extract_features_for_training_from_study,
+    get_ade_count_attributes_from_positive_terms,
+    extract_attributes_from_study,
+    ATTRIBS_LABEL_PREFIX,
+    ATTRIBS_METADATA_PREFIX,
+    CANONICAL_COUNT_PREFIX,
+    ATTRIBS_FEATURE_PREFIX
 )
 from aidose.dataset.utils import get_flow_group_descriptions
 from aidose.dataset.attribute import Attribute, AttributesList
@@ -201,14 +205,14 @@ class FeaturesExtractorTestCase(unittest.TestCase):
         }
 
         canonical = ["Overdose", "Seizure", "Fever"]
-        feats = _get_ade_count_attributes_from_positive_terms(
+        feats = get_ade_count_attributes_from_positive_terms(
             positive_terms=positive_terms, canonical_label_cols=canonical
         )
 
         as_dict = {f.name: f.to_dict()["value"] for f in feats}
-        self.assertEqual(as_dict["count.Overdose"], 3)
-        self.assertEqual(as_dict["count.Seizure"], 6)  # 2 + 4 summed
-        self.assertEqual(as_dict["count.Fever"], 0)
+        self.assertEqual(as_dict[f"{CANONICAL_COUNT_PREFIX}Overdose"], 3)
+        self.assertEqual(as_dict[f"{CANONICAL_COUNT_PREFIX}Seizure"], 6)  # 2 + 4 summed
+        self.assertEqual(as_dict[f"{CANONICAL_COUNT_PREFIX}Fever"], 0)
 
     def test_extract_features_for_study_basic_shape(self):
         # TODO: Updte this broken test to follow the feature-metadata-label division.
@@ -222,22 +226,24 @@ class FeaturesExtractorTestCase(unittest.TestCase):
             positive_terms={},  # no positives
         )
 
-        feats: AttributesList = extract_features_for_training_from_study(
+        feats: AttributesList = extract_attributes_from_study(
             study,
             canonical_label_cols=["Overdose", "Seizure"],
             ade_analysis_results_for_study=ade_res,
+            alpha_wilson=0.05,
+            wilson_proba_threshold=0.001,
         )
 
         self.assertIsInstance(feats, list)
         # Ensure some key features exist and are typed correctly (no enum expansion here)
         as_map = {f.name: f for f in feats}
 
-        self.assertIn("nctId", as_map)
-        self.assertEqual(as_map["nctId"].declared_type, str)
-        self.assertEqual(as_map["nctId"].value, "NCT00000001")
+        self.assertIn(f"{ATTRIBS_METADATA_PREFIX}nctId", as_map)
+        self.assertEqual(as_map[f"{ATTRIBS_METADATA_PREFIX}nctId"].declared_type, str)
+        self.assertEqual(as_map[f"{ATTRIBS_METADATA_PREFIX}nctId"].value, "NCT00000001")
 
-        self.assertIn("studyType", as_map)
-        self.assertEqual(as_map["studyType"].declared_type, StudyType)
+        self.assertIn(f"{ATTRIBS_FEATURE_PREFIX}studyType", as_map)
+        self.assertEqual(as_map[f"{ATTRIBS_FEATURE_PREFIX}studyType"].declared_type, StudyType)
 
         self.assertIn("phases", as_map)
         self.assertEqual(as_map["phases"].declared_type, Phase)

@@ -234,7 +234,6 @@ def main():
     # 4) Features, metadata and label extraction (per study, using ADE enrichment)
     # -------------------------------------------------
     dataset_attribs: List[AttributesList] = []
-    i = 0
     for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
         study = parse_study_by_nctid_from_json_path(ade_analysis.nctid)
 
@@ -248,10 +247,6 @@ def main():
 
         attribs = attribs.expand_enums()
         dataset_attribs.append(attribs)
-
-        i += 1
-        if i == 100:
-            break
 
     logger.info("Finalized with the extraction of features, labels and the metadata.")
 
