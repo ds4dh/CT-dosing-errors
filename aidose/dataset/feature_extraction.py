@@ -209,14 +209,7 @@ def extract_attributes_from_study(
                                                      None)),
                                       declared_type=datetime))
 
-    sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
-    lead = sc.leadSponsor if sc and sc.leadSponsor else None
-    lead_name = lead.name if lead else None
-    attribs_metadata.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
 
-    attribs_metadata.append(
-        Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
-                  declared_type=bool))
 
     # --- Eligibility ---
     elig = ps.eligibilityModule if ps and ps.eligibilityModule else None
@@ -229,13 +222,20 @@ def extract_attributes_from_study(
         attribs_features.append(Attribute(name="stdAges", value=std_ages, declared_type=type(std_ages[0])))
 
     # --- Sponsor ---
+
+
     sc = ps.sponsorCollaboratorsModule if ps and ps.sponsorCollaboratorsModule else None
     lead = sc.leadSponsor if sc and sc.leadSponsor else None
     lead_name = lead.name if lead else None
-    attribs_features.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
-    attribs_features.append(
+    attribs_metadata.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
+
+    attribs_metadata.append(
+        Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
+                  declared_type=bool))
+    attribs_metadata.append(
         Attribute(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
 
+    # --- Oversight ---
     oversight = ps.oversightModule if ps and ps.oversightModule else None
     attribs_features.append(
         Attribute(name="oversightHasDmc", value=(oversight.oversightHasDmc if oversight else None), declared_type=bool))

@@ -26,7 +26,7 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 from aidose.dataset.ade_manual_filtering import filter_ade_terms_to_focus_on_dosing_errors
 from aidose.dataset.attribute import AttributesList
-from aidose.dataset.feature_extraction import extract_attributes_from_study
+from aidose.dataset.feature_extraction import extract_attributes_from_study, ATTRIBS_METADATA_PREFIX
 from aidose.dataset.split import ListSplitter
 
 from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
@@ -262,7 +262,7 @@ def main():
     splitter = ListSplitter(split_proportions=(TRAINING_SIZE, VALIDATION_SIZE, TEST_SIZE))
     train_idx, valid_idx, test_idx = splitter.get_split_indices(
         data=dataset_attribs,
-        key=ListSplitter.chronological_key(dataset_attribs, "m.completionDate")
+        key=ListSplitter.chronological_key(dataset_attribs, f"{ATTRIBS_METADATA_PREFIX}completionDate")
     )
 
     dataset_attribs_train: List[AttributesList] = [dataset_attribs[i] for i in train_idx]
@@ -315,7 +315,7 @@ def main():
 
     hf_dataset_dict = DatasetDict({
         "train": hf_dataset_train,
-        "valid": hf_dataset_valid,
+        "validation": hf_dataset_valid,
         "test": hf_dataset_test})
 
     logger.info("Created a `datasets.DatasetDict` instance with train/valid/test splits.")
