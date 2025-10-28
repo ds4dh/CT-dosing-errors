@@ -26,9 +26,7 @@ from aidose.dataset.ade import ADEAnalysisResultForStudy
 from aidose.dataset.ade_labeling import canonical_labels_from_positive_terms
 from aidose.dataset.ade_manual_filtering import filter_ade_terms_to_focus_on_dosing_errors
 from aidose.dataset.attribute import AttributesList
-from aidose.dataset.feature_extraction import (extract_features_for_training_from_study,
-                                               extract_metadata_from_study,
-                                               extract_labels_from_study)
+from aidose.dataset.feature_extraction import extract_attributes_from_study, ATTRIBS_METADATA_PREFIX
 from aidose.dataset.split import ListSplitter
 
 from aidose.meddra import MEDDRA_VERSION, MEDDRA_DATASET_PATH
@@ -235,29 +233,20 @@ def main():
     # -------------------------------------------------
     # 4) Features, metadata and label extraction (per study, using ADE enrichment)
     # -------------------------------------------------
-    dataset_features: List[AttributesList] = []
-    dataset_metadata: List[AttributesList] = []
-    dataset_labels: List[AttributesList] = []
-
+    dataset_attribs: List[AttributesList] = []
     for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
         study = parse_study_by_nctid_from_json_path(ade_analysis.nctid)
 
-        features = extract_features_for_training_from_study(study)
-        metadata = extract_metadata_from_study(study)
-        labels = extract_labels_from_study(
+        attribs = extract_attributes_from_study(
+            study,
             canonical_label_cols=canonical_label_cols,
             ade_analysis_results_for_study=ade_analysis,
             wilson_proba_threshold=WILSON_PROBA_THRESHOLD,
             alpha_wilson=ALPHA_WILSON,
         )
 
-        features = features.expand_enums()
-        metadata = metadata.expand_enums()
-        labels = labels.expand_enums()
-
-        dataset_features.append(features)
-        dataset_metadata.append(metadata)
-        dataset_labels.append(labels)
+        attribs = attribs.expand_enums()
+        dataset_attribs.append(attribs)
 
     logger.info("Finalized with the extraction of features, labels and the metadata.")
 
@@ -267,40 +256,22 @@ def main():
 
     splitter = ListSplitter(split_proportions=(TRAINING_SIZE, VALIDATION_SIZE, TEST_SIZE))
     train_idx, valid_idx, test_idx = splitter.get_split_indices(
-        data=dataset_metadata,
-        key=ListSplitter.chronological_key(dataset_metadata, "completionDate")
+        data=dataset_attribs,
+        key=ListSplitter.chronological_key(dataset_attribs, f"{ATTRIBS_METADATA_PREFIX}completionDate")
     )
 
-    dataset_features_train: List[AttributesList] = [dataset_features[i] for i in train_idx]
-    dataset_metadata_train: List[AttributesList] = [dataset_metadata[i] for i in train_idx]
-    dataset_labels_train: List[AttributesList] = [dataset_labels[i] for i in train_idx]
-    dataset_features_valid: List[AttributesList] = [dataset_features[i] for i in valid_idx]
-    dataset_metadata_valid: List[AttributesList] = [dataset_metadata[i] for i in valid_idx]
-    dataset_labels_valid: List[AttributesList] = [dataset_labels[i] for i in valid_idx]
-    dataset_features_test: List[AttributesList] = [dataset_features[i] for i in test_idx]
-    dataset_metadata_test: List[AttributesList] = [dataset_metadata[i] for i in test_idx]
-    dataset_labels_test: List[AttributesList] = [dataset_labels[i] for i in test_idx]
+    dataset_attribs_train: List[AttributesList] = [dataset_attribs[i] for i in train_idx]
+    dataset_attribs_valid: List[AttributesList] = [dataset_attribs[i] for i in valid_idx]
+    dataset_attribs_test: List[AttributesList] = [dataset_attribs[i] for i in test_idx]
 
     logger.info("Split the dataset into train/valid/test with sizes: {}/{}/{}.".format(
-        len(dataset_features_train), len(dataset_features_valid), len(dataset_features_test)))
+        len(dataset_attribs_train), len(dataset_attribs_valid), len(dataset_attribs_test)))
 
     # -------------------------------------------------
     # 6)  Dataset creation with schemas
     # -----------------------------------
-    # --- derive sub-schemas ---
-    feat_names, feat_types = dataset_features[0].get_names(), dataset_features[0].get_types()
-    meta_names, meta_types = dataset_metadata[0].get_names(), dataset_metadata[0].get_types()
-    label_names, label_types = dataset_labels[0].get_names(), dataset_labels[0].get_types()
-
-    features_schema = Features(build_struct_schema(feat_names, feat_types))
-    metadata_schema = Features(build_struct_schema(meta_names, meta_types))
-    labels_schema = Features(build_struct_schema(label_names, label_types))
-
-    schema = Features({
-        "features": features_schema,
-        "metadata": metadata_schema,
-        "labels": labels_schema,
-    })
+    attrib_names, attrib_types = dataset_attribs[0].get_names(), dataset_attribs[0].get_types()
+    schema = Features(build_struct_schema(attrib_names, attrib_types))
 
     ds_info = make_dataset_info(
         dataset_version=DATASET_VERSION,
@@ -319,30 +290,20 @@ def main():
         features=schema
     )
 
-    hf_dataset_train = Dataset.from_dict(
-        {
-            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_train],
-            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata_train],
-            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_train],
-        },
+    hf_dataset_train = Dataset.from_list(
+        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_attribs_train],
         features=schema,
         info=ds_info
     )
-    hf_dataset_valid = Dataset.from_dict(
-        {
-            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_valid],
-            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata_valid],
-            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_valid],
-        },
+
+    hf_dataset_valid = Dataset.from_list(
+        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_attribs_valid],
         features=schema,
         info=ds_info
     )
-    hf_dataset_test = Dataset.from_dict(
-        {
-            "features": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_features_test],
-            "metadata": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_metadata_test],
-            "labels": [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_labels_test],
-        },
+
+    hf_dataset_test = Dataset.from_list(
+        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_attribs_test],
         features=schema,
         info=ds_info
     )
