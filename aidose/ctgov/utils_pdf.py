@@ -18,16 +18,16 @@ class ExtractedImage:
     width: int
     height: int
     colorspace: str  # e.g., "RGB", "RGBA", "L", "LA"
-    ext: str         # original file extension if preserved, else "png"
+    ext: str  # original file extension if preserved, else "png"
 
 
 # ---------- Text extraction ----------
 
 def extract_text_from_pdf(
-    pdf_path: str,
-    *,
-    mode: Literal["simple", "layout"] = "simple",
-    join_with: str = "\n\n",
+        pdf_path: str,
+        *,
+        mode: Literal["simple", "layout"] = "simple",
+        join_with: str = "\n\n",
 ) -> str:
     """
     Fast text extraction using PyMuPDF (MuPDF).
@@ -46,6 +46,7 @@ def extract_text_from_pdf(
                 blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))  # sort by y, then x
                 pages.append("\n".join(b[4].rstrip() for b in blocks if b[4]))
     return join_with.join(pages)
+
 
 class DeepSeekOCRExtractor:
     """
@@ -69,12 +70,12 @@ class DeepSeekOCRExtractor:
     PROMPT = "<image>\n<|grounding|>Convert the document to markdown."
 
     def __init__(
-        self,
-        *,
-        model_name: str = "deepseek-ai/DeepSeek-OCR",
-        temperature: float = 0.0,
-        max_tokens: int = 8192,
-        dpi: int = 300,
+            self,
+            *,
+            model_name: str = "deepseek-ai/DeepSeek-OCR",
+            temperature: float = 0.0,
+            max_tokens: int = 8192,
+            dpi: int = 300,
     ) -> None:
 
         import pypdfium2 as pdfium
@@ -83,7 +84,6 @@ class DeepSeekOCRExtractor:
 
         self._pdfium = pdfium
         self._dpi = dpi
-
 
         self._llm = LLM(
             model=model_name,
@@ -103,10 +103,10 @@ class DeepSeekOCRExtractor:
         )
 
     def extract_text_from_pdf(
-        self,
-        pdf_path: str,
-        *,
-        join_with: str = "\n\n",
+            self,
+            pdf_path: str,
+            *,
+            join_with: str = "\n\n",
     ) -> str:
         """
         OCR the entire PDF and return a single markdown string joined with `join_with`.
@@ -140,11 +140,11 @@ class DeepSeekOCRExtractor:
 # ---------- Image extraction ----------
 
 def extract_images_from_pdf(
-    pdf_path: str,
-    *,
-    dedupe: bool = True,
-    keep_original_format: bool = True,
-    min_dimensions: Tuple[int, int] = (64, 64),
+        pdf_path: str,
+        *,
+        dedupe: bool = True,
+        keep_original_format: bool = True,
+        min_dimensions: Tuple[int, int] = (64, 64),
 ) -> List[ExtractedImage]:
     """
     Extract embedded raster images from a PDF and return them as PIL Images (in-memory).
@@ -214,7 +214,8 @@ def extract_images_from_pdf(
                 added = False
                 if keep_original_format:
                     try:
-                        info = doc.extract_image(xref)  # {'image': bytes, 'width': int, 'height': int, 'ext': 'jpeg', ...}
+                        info = doc.extract_image(
+                            xref)  # {'image': bytes, 'width': int, 'height': int, 'ext': 'jpeg', ...}
                         if info and info.get("image"):
                             w, h = info["width"], info["height"]
                             if w >= min_dimensions[0] and h >= min_dimensions[1]:
