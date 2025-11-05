@@ -2,20 +2,38 @@ from aidose.ctgov.utils_download import (
     fetch_all_study_nctids_from_api_before_cutoff_date,
     download_all_studies_as_zip,
     unzip_as_separate_jsons_and_delete_zip_file,
-    find_files_with_extension_recursively
+    find_files_with_extension_recursively,
+    get_study_path_by_nctid_and_raw_dir
+)
+
+from aidose.ctgov.utils_pdf import extract_text_from_pdf
+from aidose.ctgov.utils_protocol import (
+    get_large_protocols_pdf_links,
+    get_protocol_pdfs_saved_dir_for_nctid,
+    extract_and_concatenate_pdf_texts_for_nctid,
+    IncrementalLargeTextExtractor
 )
 
 from aidose.ctgov import (CTGOV_DATASET_RAW_PATH,
                           CTGOV_DATASET_PATH,
                           CTGOV_API_DOWNLOAD_BASE_URL,
-                          CTGOV_NCTIDS_LIST_ALL_PATH)
+                          CTGOV_NCTIDS_LIST_ALL_PATH,
+                          CTGOV_DATASET_EXTENSIONS_PATH,
+                          CTGOV_PROTOCOL_PDF_LINKS_PATH,
+                          CTGOV_EXTRACTED_PDFS_DATASET_PATH)
 
+from aidose.ctgov.structures import Study
+
+from typing import List, Dict
+import tqdm
 import os
 import time
 import requests
 from datetime import datetime, timezone
-from typing import List
 import logging
+import urllib.request
+import shutil
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -82,5 +100,60 @@ def download_registry_from_api(knowledge_cutoff_date: datetime | None = None) ->
         raise RuntimeError("Mismatch between expected and existing NCT IDs in the dataset.")
 
 
+def download_pdfs_for_all_trials_with_available_documents() -> None:
+    if not os.path.exists(CTGOV_PROTOCOL_PDF_LINKS_PATH):
+        with open(CTGOV_NCTIDS_LIST_ALL_PATH, "r") as f:
+            nctids_list_all = [nctid.strip() for nctid in f.readlines()]
+
+        nctid_protocol_pdf_map: Dict[str, List[str]] = {}
+        for nct_id in tqdm.tqdm(nctids_list_all, desc="Parsing trials to extract document PDF URL's."):
+            json_path = get_study_path_by_nctid_and_raw_dir(nct_id, CTGOV_DATASET_RAW_PATH)
+            with open(json_path, "r", encoding="utf-8") as f:
+                study = Study.model_validate_json(f.read())
+                pdf_links = get_large_protocols_pdf_links(study, check_link_status=False)
+                if pdf_links:
+                    nctid_protocol_pdf_map[nct_id] = pdf_links
+        with open(CTGOV_PROTOCOL_PDF_LINKS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(nctid_protocol_pdf_map, f, indent=2)
+
+        logger.info("Found {} studies with protocol/SAP PDF links.".format(len(nctid_protocol_pdf_map.keys())))
+
+    with open(CTGOV_PROTOCOL_PDF_LINKS_PATH, "r", encoding="utf-8") as f:
+        nctid_protocol_pdf_map = json.load(f)
+
+    os.makedirs(CTGOV_DATASET_EXTENSIONS_PATH, exist_ok=True)
+    for nctid, pdf_links in tqdm.tqdm(nctid_protocol_pdf_map.items(),
+                                      desc="Downloading existing document PDFs of all trials (if not already done) ..."):
+        for link in pdf_links:
+            pdf_name = link.split("/")[-1]
+            pdf_save_path = os.path.join(
+                get_protocol_pdfs_saved_dir_for_nctid(nctid, CTGOV_DATASET_EXTENSIONS_PATH), pdf_name)
+            if not os.path.exists(pdf_save_path):
+                os.makedirs(os.path.dirname(pdf_save_path), exist_ok=True)
+                with urllib.request.urlopen(link) as resp:
+                    with open(pdf_save_path, "wb") as out:
+                        shutil.copyfileobj(resp, out)
+    logger.info("All protocol PDF's now available (either existed before or downloaded now) ...")
+
+
+def extract_text_incrementally_from_downloaded_document_pdfs():
+    with open(CTGOV_PROTOCOL_PDF_LINKS_PATH, "r", encoding="utf-8") as f:
+        nctid_protocol_pdf_map = json.load(f)
+
+    text_extractor_from_pdf_documents = IncrementalLargeTextExtractor(
+        save_dir=CTGOV_EXTRACTED_PDFS_DATASET_PATH,
+        nctids_list=nctid_protocol_pdf_map.keys(),
+        text_extract_func=lambda nctid: extract_and_concatenate_pdf_texts_for_nctid(nctid,
+                                                                                    CTGOV_DATASET_EXTENSIONS_PATH,
+                                                                                    extract_text_from_pdf),
+        save_batch_size=1000,
+        logger_=logger
+    )
+
+    text_extractor_from_pdf_documents.run()
+
+
 if __name__ == "__main__":
     download_registry_from_api(knowledge_cutoff_date=None)
+    download_pdfs_for_all_trials_with_available_documents()
+    extract_text_incrementally_from_downloaded_document_pdfs()
