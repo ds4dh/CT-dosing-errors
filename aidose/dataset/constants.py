@@ -8,7 +8,6 @@ import os
 DATASET_NAME = "CT-DOSING-ERRORS"
 DATASET_VERSION = "0.2.1"
 
-
 if DATASETS_ROOT is not None and os.path.exists(DATASETS_ROOT):
     END_POINT_HF_DATASET_PATH = os.path.join(DATASETS_ROOT, DATASET_NAME, DATASET_VERSION)
     os.makedirs(END_POINT_HF_DATASET_PATH, exist_ok=True)
@@ -21,9 +20,6 @@ MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"
 
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
                                                "ctgov_nctids_list_filtered.txt")
-
-CTGOV_PROTOCOL_PDF_LINKS_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
-                                             "ctgov_protocol_pdfs_links.json")
 
 ADE_ANALYSIS_RESULTS_PATH = os.path.join(RESOURCES_DIR, "ade_analysis_results.json")
 
