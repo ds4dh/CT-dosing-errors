@@ -6,3 +6,5 @@ from .constants import CTGOV_DATASET_PATH
 from .constants import CTGOV_PROTOCOL_PDF_LINKS_PATH
 from .constants import CTGOV_EXTRACTED_PDFS_DATASET_PATH
 from .main import download_registry_from_api
+from .main import download_pdfs_for_all_trials_with_available_documents
+from .main import extract_text_incrementally_from_downloaded_document_pdfs

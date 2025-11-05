@@ -9,7 +9,6 @@ from aidose.dataset import (
     MEDDRA_ADE_LABELS_PATH,
     MEDDRA_HLGT_CODES_LITERAL,
     CTGOV_NCTIDS_LIST_FILTERED_PATH,
-    CTGOV_PROTOCOL_PDF_LINKS_PATH,
     ADE_ANALYSIS_RESULTS_PATH,
     END_POINT_HF_DATASET_PATH,
     CTGOV_KNOWLEDGE_CUTOFF_DATE,
@@ -34,25 +33,24 @@ from aidose.meddra.graph import MedDRA
 from aidose.meddra.utils import parse_hlgt_codes_literal
 from aidose.meddra.extraction import build_meddra_descendants
 
-from aidose.ctgov.constants import (CTGOV_NCTIDS_LIST_ALL_PATH,
-                                    CTGOV_DATASET_RAW_PATH,
-                                    CTGOV_DATASET_PATH,
-                                    CTGOV_DATASET_EXTENSIONS_PATH)
-from aidose.ctgov.structures import Study
-from aidose.ctgov import download_registry_from_api
-from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
-from aidose.ctgov.utils_protocol import (get_large_protocols_pdf_links,
-                                         get_protocol_pdfs_saved_dir_for_nctid)
+from aidose.ctgov import (CTGOV_NCTIDS_LIST_ALL_PATH,
+                          CTGOV_DATASET_RAW_PATH,
+                          CTGOV_DATASET_PATH,
+                          CTGOV_EXTRACTED_PDFS_DATASET_PATH)
 
-from datasets import Dataset, Features, DatasetDict
+from aidose.ctgov.structures import Study
+from aidose.ctgov import (download_registry_from_api,
+                          download_pdfs_for_all_trials_with_available_documents,
+                          extract_text_incrementally_from_downloaded_document_pdfs)
+from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
+
+from datasets import Dataset, Features, DatasetDict, load_from_disk
 
 from typing import List, Dict
 
 import os
 import json
 import tqdm
-import urllib.request
-import shutil
 from datetime import datetime
 import logging
 
@@ -113,8 +111,7 @@ def main():
             raise RuntimeError("Did not manage to parse the CTGov download timestamp.")
 
     nctids_list_filtered: List[str] = []
-    nctid_protocol_pdf_map: Dict[str, List[str]] = {}
-    if not (os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH) and os.path.exists(CTGOV_PROTOCOL_PDF_LINKS_PATH)):
+    if not os.path.exists(CTGOV_NCTIDS_LIST_FILTERED_PATH):
         logger.info("Filtering CTGov trials for inclusion ...")
         with open(CTGOV_NCTIDS_LIST_ALL_PATH, 'r', encoding='utf-8') as f:
             nctids_list_all = [line.strip() for line in f if line.strip()]
@@ -125,41 +122,24 @@ def main():
             if include_trial_after_sequential_filtering(study, CTGOV_KNOWLEDGE_CUTOFF_DATE):
                 nctids_list_filtered.append(nct_id)
 
-                pdf_links = get_large_protocols_pdf_links(study, check_link_status=False)
-                if pdf_links:
-                    nctid_protocol_pdf_map[nct_id] = pdf_links
-
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, 'w', encoding='utf-8') as f:
             for nctid in nctids_list_filtered:
                 f.write(f"{nctid}\n")
         logger.info("Included {} studies after sequential filtering of the {} CTGov studies.".format(
             len(nctids_list_filtered), len(nctids_list_all)))
-        with open(CTGOV_PROTOCOL_PDF_LINKS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(nctid_protocol_pdf_map, f, indent=2)
-        logger.info("Found {} studies with protocol/SAP PDF links.".format(len(nctid_protocol_pdf_map.keys())))
     else:
         with open(CTGOV_NCTIDS_LIST_FILTERED_PATH, "r", encoding="utf-8") as f:
             nctids_list_filtered = [line.strip() for line in f if line.strip()]
-        with open(CTGOV_PROTOCOL_PDF_LINKS_PATH, "r", encoding="utf-8") as f:
-            nctid_protocol_pdf_map = json.load(f)
+
         logger.info("Loaded (from {}) the list of {} CTGov trials included to the dataset....".format(
             CTGOV_NCTIDS_LIST_FILTERED_PATH, len(nctids_list_filtered)))
-        logger.info("Loaded (from {}) {} CTGov protocol PDF links...".format(
-            CTGOV_PROTOCOL_PDF_LINKS_PATH, len(nctid_protocol_pdf_map.keys())))
 
-    os.makedirs(CTGOV_DATASET_EXTENSIONS_PATH, exist_ok=True)
-    for nctid, pdf_links in tqdm.tqdm(nctid_protocol_pdf_map.items(),
-                                      desc="Downloading protocol PDFs for eligible trials if not already done ..."):
-        for link in pdf_links:
-            pdf_name = link.split("/")[-1]
-            pdf_save_path = os.path.join(
-                get_protocol_pdfs_saved_dir_for_nctid(nctid, CTGOV_DATASET_EXTENSIONS_PATH), pdf_name)
-            if not os.path.exists(pdf_save_path):
-                os.makedirs(os.path.dirname(pdf_save_path), exist_ok=True)
-                with urllib.request.urlopen(link) as resp:
-                    with open(pdf_save_path, "wb") as out:
-                        shutil.copyfileobj(resp, out)
-    logger.info("All protocol PDF's now available (either existed before or downloaded now) ...")
+    if not os.path.exists(CTGOV_EXTRACTED_PDFS_DATASET_PATH):
+        logger.info("Didn't find an existing dataset of extracted PDF texts, so attempting to create one ...")
+        download_pdfs_for_all_trials_with_available_documents()
+        extract_text_incrementally_from_downloaded_document_pdfs()
+    else:
+        logger.info("Found an existing dataset of extracted PDF texts, so re-using it ...")
 
     # -------------------------------------------------
     # 2) Per-study ADE processing + split pos / neg
@@ -231,7 +211,15 @@ def main():
     logger.info(f"Extracted {len(canonical_label_cols)} unique canonical ADE labels from positive terms ...")
 
     # -------------------------------------------------
-    # 4) Features, metadata and label extraction (per study, using ADE enrichment)
+    # 4) Load extracted PDF texts dataset
+    # -------------------------------------------------
+    extracted_pdf_texts_dataset = load_from_disk(CTGOV_EXTRACTED_PDFS_DATASET_PATH)
+    logger.info("Loaded the dataset of extracted PDF texts from disk ...")
+    map_of_nctid_to_extracted_texts_from_pdfs = dict(zip(extracted_pdf_texts_dataset["nctid"],
+                                                         extracted_pdf_texts_dataset["extracted_text"]))
+
+    # -------------------------------------------------
+    # 5) Features, metadata and label extraction (per study, using ADE enrichment)
     # -------------------------------------------------
     dataset_attribs: List[AttributesList] = []
     for ade_analysis in tqdm.tqdm(positive_trials_ade + negative_trials_ade, desc="Extracting features"):
@@ -243,6 +231,7 @@ def main():
             ade_analysis_results_for_study=ade_analysis,
             wilson_proba_threshold=WILSON_PROBA_THRESHOLD,
             alpha_wilson=ALPHA_WILSON,
+            map_of_nctid_to_extracted_texts_from_pdfs=map_of_nctid_to_extracted_texts_from_pdfs
         )
 
         attribs = attribs.expand_enums()
@@ -251,9 +240,8 @@ def main():
     logger.info("Finalized with the extraction of features, labels and the metadata.")
 
     # -------------------------------------------------
-    # 5) Dataset splitting
+    # 6) Dataset splitting
     # -------------------------------------------------
-
     splitter = ListSplitter(split_proportions=(TRAINING_SIZE, VALIDATION_SIZE, TEST_SIZE))
     train_idx, valid_idx, test_idx = splitter.get_split_indices(
         data=dataset_attribs,
@@ -268,7 +256,7 @@ def main():
         len(dataset_attribs_train), len(dataset_attribs_valid), len(dataset_attribs_test)))
 
     # -------------------------------------------------
-    # 6)  Dataset creation with schemas
+    # 7)  Dataset creation with schemas
     # -----------------------------------
     attrib_names, attrib_types = dataset_attribs[0].get_names(), dataset_attribs[0].get_types()
     schema = Features(build_struct_schema(attrib_names, attrib_types))
@@ -316,7 +304,7 @@ def main():
     logger.info("Created a `datasets.DatasetDict` instance with train/valid/test splits.")
 
     # -------------------------------------------------
-    # 7) Saving
+    # 8) Saving
     # -------------------------------------------------
 
     hf_dataset_dict.save_to_disk(END_POINT_HF_DATASET_PATH)
@@ -324,5 +312,8 @@ def main():
 
 
 if __name__ == '__main__':
-    if not os.path.exists(END_POINT_HF_DATASET_PATH):
+    try:
+        load_from_disk(END_POINT_HF_DATASET_PATH)
+        logger.info(f"The dataset already exists at {END_POINT_HF_DATASET_PATH}, so not re-creating it.")
+    except FileNotFoundError:
         main()

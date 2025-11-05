@@ -16,9 +16,7 @@ from aidose.ctgov.utils_protocol import (has_protocol,
                                          get_protocol_arm_groups,
                                          get_protocol_interventions)
 
-from aidose.ctgov.utils_protocol import concatenate_pdf_texts_for_nctid, get_large_protocols_pdf_links
-
-from aidose.ctgov import CTGOV_DATASET_EXTENSIONS_PATH
+from aidose.ctgov.utils_protocol import get_large_protocols_pdf_links
 
 from .utils import get_location_details, get_study_completion_date
 
@@ -145,7 +143,8 @@ def extract_attributes_from_study(
         canonical_label_cols: Sequence[str],
         ade_analysis_results_for_study: ADEAnalysisResultForStudy,
         alpha_wilson: float,
-        wilson_proba_threshold: float
+        wilson_proba_threshold: float,
+        map_of_nctid_to_extracted_texts_from_pdfs: Dict | None = None,  # TODO: Memory-inefficient
 ) -> AttributesList:
     """
     Extract attributes from a Study.
@@ -154,6 +153,9 @@ def extract_attributes_from_study(
       - labels
       - metadata (non-training features)
     """
+    external_extracted_texts_provided = False
+    if isinstance(map_of_nctid_to_extracted_texts_from_pdfs, Dict):
+        external_extracted_texts_provided = True
 
     attribs_features = AttributesList()
     attribs_labels = AttributesList()
@@ -253,11 +255,12 @@ def extract_attributes_from_study(
                                       declared_type=str))
 
     # --- Documents and Protocol PDF's extraction ---
-    if has_protocol(study):
-        pdf_text = concatenate_pdf_texts_for_nctid(nctid, CTGOV_DATASET_EXTENSIONS_PATH)
-    else:
-        pdf_text = None
-    attribs_features.append(Attribute(name="protocolPdfText", value=pdf_text, declared_type=str))
+    if external_extracted_texts_provided:
+        if has_protocol(study):
+            pdf_text = map_of_nctid_to_extracted_texts_from_pdfs.get(nctid, None)
+        else:
+            pdf_text = None
+        attribs_features.append(Attribute(name="protocolPdfText", value=pdf_text, declared_type=str))
 
     attribs_metadata.append(Attribute(name="hasProtocol", value=has_protocol(study), declared_type=bool))
     attribs_metadata.append(Attribute(name="hasSap", value=has_sap(study), declared_type=bool))
