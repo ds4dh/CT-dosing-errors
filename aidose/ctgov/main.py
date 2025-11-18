@@ -6,7 +6,8 @@ from aidose.ctgov.utils_download import (
     get_study_path_by_nctid_and_raw_dir
 )
 
-from aidose.ctgov.utils_pdf import extract_text_from_pdf
+from aidose.ctgov.utils_pdf import extract_text_from_pdf_using_pymupdf
+from aidose.ctgov.utils_pdf import DeepSeekOCRExtractor
 from aidose.ctgov.utils_protocol import (
     get_large_protocols_pdf_links,
     get_protocol_pdfs_saved_dir_for_nctid,
@@ -20,7 +21,8 @@ from aidose.ctgov import (CTGOV_DATASET_RAW_PATH,
                           CTGOV_NCTIDS_LIST_ALL_PATH,
                           CTGOV_DATASET_EXTENSIONS_PATH,
                           CTGOV_PROTOCOL_PDF_LINKS_PATH,
-                          CTGOV_EXTRACTED_PDFS_DATASET_PATH)
+                          CTGOV_EXTRACTED_PDFS_DATASET_PATH,
+                          EXTRACT_PDFS_USING_DEEPSEEK_OCR)
 
 from aidose.ctgov.structures import Study
 
@@ -140,12 +142,18 @@ def extract_text_incrementally_from_downloaded_document_pdfs():
     with open(CTGOV_PROTOCOL_PDF_LINKS_PATH, "r", encoding="utf-8") as f:
         nctid_protocol_pdf_map = json.load(f)
 
+    if EXTRACT_PDFS_USING_DEEPSEEK_OCR:
+        ocr = DeepSeekOCRExtractor()
+        extractor_functional = lambda pdf_path: ocr.extract_text_from_pdf(pdf_path)
+    else:
+        extractor_functional = extract_text_from_pdf_using_pymupdf
+
     text_extractor_from_pdf_documents = IncrementalLargeTextExtractor(
         save_dir=CTGOV_EXTRACTED_PDFS_DATASET_PATH,
         nctids_list=nctid_protocol_pdf_map.keys(),
         text_extract_func=lambda nctid: extract_and_concatenate_pdf_texts_for_nctid(nctid,
                                                                                     CTGOV_DATASET_EXTENSIONS_PATH,
-                                                                                    extract_text_from_pdf),
+                                                                                    extractor_functional),
         save_batch_size=1000,
         logger_=logger
     )
