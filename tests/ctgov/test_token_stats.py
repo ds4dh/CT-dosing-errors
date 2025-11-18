@@ -1,6 +1,6 @@
 from aidose.ctgov.constants import CTGOV_NCTIDS_LIST_ALL_PATH, CTGOV_DATASET_RAW_PATH, CTGOV_DATASET_EXTENSIONS_PATH
 from aidose.ctgov.utils_download import get_study_path_by_nctid_and_raw_dir
-from aidose.ctgov.utils_pdf import extract_text_from_pdf
+from aidose.ctgov.utils_pdf import extract_text_from_pdf_using_pymupdf
 from aidose import RESOURCES_DIR
 
 from transformers import AutoTokenizer
@@ -157,7 +157,7 @@ class CTGovProtocolPDFTokensEstimationTest(unittest.TestCase):
     def test_estimate_protocol_pdf_tokens(self):
         total_tokens_seen = 0
         for pdf_path in tqdm.tqdm(self.pdf_samples, desc="Tokenizing PDFs .."):
-            text = extract_text_from_pdf(pdf_path)
+            text = extract_text_from_pdf_using_pymupdf(pdf_path)
             token_count = len(self.tokenizer.encode(text, add_special_tokens=False, truncation=False))
             total_tokens_seen += token_count
 

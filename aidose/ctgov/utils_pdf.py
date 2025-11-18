@@ -18,16 +18,16 @@ class ExtractedImage:
     width: int
     height: int
     colorspace: str  # e.g., "RGB", "RGBA", "L", "LA"
-    ext: str         # original file extension if preserved, else "png"
+    ext: str  # original file extension if preserved, else "png"
 
 
 # ---------- Text extraction ----------
 
-def extract_text_from_pdf(
-    pdf_path: str,
-    *,
-    mode: Literal["simple", "layout"] = "simple",
-    join_with: str = "\n\n",
+def extract_text_from_pdf_using_pymupdf(
+        pdf_path: str,
+        *,
+        mode: Literal["simple", "layout"] = "simple",
+        join_with: str = "\n\n",
 ) -> str:
     """
     Fast text extraction using PyMuPDF (MuPDF).
@@ -48,14 +48,103 @@ def extract_text_from_pdf(
     return join_with.join(pages)
 
 
+class DeepSeekOCRExtractor:
+    """
+    DeepSeek-OCR wrapper.
+
+    - OCR logic:
+      * Render pages via pypdfium2 at DPI -> PIL RGB
+      * Prompt: "<image>\\n<|grounding|>Convert the document to markdown."
+      * vLLM.generate with multi_modal_data={"image": PIL.Image}
+      * SamplingParams: temperature=0.0, max_tokens=8192
+        extra_args={'ngram_size':30, 'window_size':90, 'whitelist_token_ids':{128821,128822}}
+      * skip_special_tokens=False
+      * logits_processors=[NGramPerReqLogitsProcessor]
+
+    Usage:
+        ocr = DeepSeekOCRExtractor()
+        text = ocr.extract_text_from_pdf("/path/file.pdf")            # joined with "\n\n"
+        text = ocr.extract_text_from_pdf("/path/file.pdf", join_with="")  # no separator
+    """
+
+    PROMPT = "<image>\n<|grounding|>Convert the document to markdown."
+
+    def __init__(
+            self,
+            *,
+            model_name: str = "deepseek-ai/DeepSeek-OCR",
+            temperature: float = 0.0,
+            max_tokens: int = 8192,
+            dpi: int = 300,
+    ) -> None:
+
+        import pypdfium2 as pdfium
+        from vllm import LLM, SamplingParams
+        from vllm.model_executor.models.deepseek_ocr import NGramPerReqLogitsProcessor
+
+        self._pdfium = pdfium
+        self._dpi = dpi
+
+        self._llm = LLM(
+            model=model_name,
+            enable_prefix_caching=False,
+            mm_processor_cache_gb=0,
+            logits_processors=[NGramPerReqLogitsProcessor],
+        )
+        self._sampling_params = SamplingParams(
+            temperature=temperature,
+            max_tokens=max_tokens,
+            extra_args=dict(
+                ngram_size=30,
+                window_size=90,
+                whitelist_token_ids={128821, 128822},  # <td>, </td>
+            ),
+            skip_special_tokens=False,
+        )
+
+    def extract_text_from_pdf(
+            self,
+            pdf_path: str,
+            *,
+            join_with: str = "\n\n",
+    ) -> str:
+        """
+        OCR the entire PDF and return a single markdown string joined with `join_with`.
+        """
+        pdfium = self._pdfium
+        scale = self._dpi / 72.0
+
+        doc = pdfium.PdfDocument(pdf_path)
+        try:
+            items: List[Image.Image] = []
+            for page in doc:
+                pil_img = page.render(scale=scale).to_pil().convert("RGB")
+                items.append(pil_img)
+        finally:
+            doc.close()
+
+        model_inputs = [
+            {"prompt": self.PROMPT, "multi_modal_data": {"image": img}}
+            for img in items
+        ]
+        outputs = self._llm.generate(model_inputs, self._sampling_params)
+
+        page_texts = [
+            output.outputs[0].text if getattr(output, "outputs", None) else ""
+            for output in outputs
+        ]
+
+        return join_with.join(page_texts)
+
+
 # ---------- Image extraction ----------
 
 def extract_images_from_pdf(
-    pdf_path: str,
-    *,
-    dedupe: bool = True,
-    keep_original_format: bool = True,
-    min_dimensions: Tuple[int, int] = (64, 64),
+        pdf_path: str,
+        *,
+        dedupe: bool = True,
+        keep_original_format: bool = True,
+        min_dimensions: Tuple[int, int] = (64, 64),
 ) -> List[ExtractedImage]:
     """
     Extract embedded raster images from a PDF and return them as PIL Images (in-memory).
@@ -125,7 +214,8 @@ def extract_images_from_pdf(
                 added = False
                 if keep_original_format:
                     try:
-                        info = doc.extract_image(xref)  # {'image': bytes, 'width': int, 'height': int, 'ext': 'jpeg', ...}
+                        info = doc.extract_image(
+                            xref)  # {'image': bytes, 'width': int, 'height': int, 'ext': 'jpeg', ...}
                         if info and info.get("image"):
                             w, h = info["width"], info["height"]
                             if w >= min_dimensions[0] and h >= min_dimensions[1]:
