@@ -23,7 +23,7 @@ class ExtractedImage:
 
 # ---------- Text extraction ----------
 
-def extract_text_from_pdf(
+def extract_text_from_pdf_using_pymupdf(
         pdf_path: str,
         *,
         mode: Literal["simple", "layout"] = "simple",

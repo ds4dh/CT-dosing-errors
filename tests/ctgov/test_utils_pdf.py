@@ -1,4 +1,4 @@
-from aidose.ctgov.utils_pdf import extract_text_from_pdf, extract_images_from_pdf, ExtractedImage
+from aidose.ctgov.utils_pdf import extract_text_from_pdf_using_pymupdf, extract_images_from_pdf, ExtractedImage
 from aidose.ctgov.utils_pdf import DeepSeekOCRExtractor
 from aidose.ctgov.structures import Study
 from aidose.ctgov.utils_protocol import get_large_protocols_pdf_links
@@ -49,7 +49,7 @@ class PDFUtilsTest(unittest.TestCase):
 
     def test_extract_text_from_protocol_pdf(self):
         for pdf_path in self.pdf_paths:
-            text = extract_text_from_pdf(pdf_path)
+            text = extract_text_from_pdf_using_pymupdf(pdf_path)
             self.assertIsInstance(text, str)
             self.assertGreater(len(text), 1000)
 
