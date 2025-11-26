@@ -8,13 +8,12 @@ import os
 import shutil
 
 
-
 def clean_and_rename(example: Dict[str, Any]) -> Dict[str, Any]:
     """
     Filters and renames columns:
     1. Strips 'FEATURE_' prefix.
     2. Retains 'LABEL_wilson_label' as 'target'.
-    3. Drops all other metadata/labels.
+    3. Retains 'METADATA_nctId' as 'nctid'.
     """
     new_example: Dict[str, Any] = {}
 
@@ -24,9 +23,13 @@ def clean_and_rename(example: Dict[str, Any]) -> Dict[str, Any]:
             new_key = key.replace("FEATURE_", "")
             new_example[new_key] = value
 
-    # 2. Keep only the specific Wilson label and rename it to 'target'
+    # 2. Rename Target
     if "LABEL_wilson_label" in example:
         new_example["target"] = example["LABEL_wilson_label"]
+
+    # 3. Rename ID (Crucial for alignment)
+    if "METADATA_nctId" in example:
+        new_example["nctid"] = example["METADATA_nctId"]
 
     return new_example
 
@@ -48,8 +51,7 @@ def process_splits(ds_dict: DatasetDict) -> DatasetDict:
 
 def save_phase_data(dataset, phase_name: str, output_root: str):
     """
-    Helper to split a dataset split into Input (Features) and Reference (Labels)
-    and save them to separate folders.
+    Saves Features (Parquet) and Labels (CSV).
     """
     input_dir = os.path.join(output_root, f"{phase_name}_input")
     ref_dir = os.path.join(output_root, f"{phase_name}_ref")
@@ -57,18 +59,19 @@ def save_phase_data(dataset, phase_name: str, output_root: str):
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(ref_dir, exist_ok=True)
 
-    # 1. Save X (Features) - Drop the target
-    if "target" in dataset.column_names:
-        features = dataset.remove_columns(["target"])
-    else:
-        features = dataset
+    # 1. Save X (Features) -> Parquet
+    # Drop target, BUT KEEP 'nctid' so users can identify rows
+    cols_to_keep = [c for c in dataset.column_names if c != "target"]
+    features = dataset.select_columns(cols_to_keep)
 
     features.to_parquet(os.path.join(input_dir, f"{phase_name}_features.parquet"))
 
-    # 2. Save Y (Labels) - Keep only target
-    if "target" in dataset.column_names:
-        labels = dataset.select_columns(["target"])
-        labels.to_parquet(os.path.join(ref_dir, f"{phase_name}_labels.parquet"))
+    # 2. Save Y (Labels) -> CSV
+    # Keep 'nctid' and 'target'
+    if "target" in dataset.column_names and "nctid" in dataset.column_names:
+        labels = dataset.select_columns(["nctid", "target"])
+        # Save as CSV for server compatibility (no pyarrow needed for scoring)
+        labels.to_csv(os.path.join(ref_dir, f"{phase_name}_labels.csv"), index=False)
 
     return input_dir, ref_dir
 
@@ -125,7 +128,7 @@ if __name__ == "__main__":
     DESTINATION_PUBLIC_DATASET_PATH = os.path.join(
         DATASETS_ROOT,
         "CT-DOSING-ERROR-BENCHMARK",
-        f"{DATASET_VERSION}-rc1"
+        f"{DATASET_VERSION}_CT-DEB26-rc1"
     )
 
     print(f"Loading dataset from {SOURCE_PRIVATE_DATASET_PATH}...")
