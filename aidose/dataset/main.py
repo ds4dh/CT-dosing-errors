@@ -263,7 +263,7 @@ def main():
 
     ds_info = make_dataset_info(
         dataset_version=DATASET_VERSION,
-        description="""{} (v{}): A dataset to study the ADE risks (dosing errors) in clinical trials. 
+        description="""{} (v{}): A dataset to study the medication errors (dosing errors) in clinical trials. 
         
         Based on the studies from `www.clinicaltrials.gov`, completed before {} and downloaded at {}, and the 
         medical dictionary of `www.meddra.org`, with version {}.""".format(
@@ -273,7 +273,7 @@ def main():
             else datetime.now().strftime("%Y-%m-%dT%HZ"),
             ctgov_download_timestamp.strftime("%Y-%m-%dT%HZ"),
             MEDDRA_VERSION),
-        license_str=None,  # TODO: To decide on the licence.
+        license_str="CC BY 4.0",
         package_name=PACKAGE_NAME,
         features=schema
     )
