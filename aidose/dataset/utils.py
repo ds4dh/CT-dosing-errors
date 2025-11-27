@@ -1,12 +1,15 @@
+from aidose.dataset.attribute import AttributesList
 from aidose.ctgov.structures import Study, InterventionType, StudyType, Status, StatusModule
 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
 
-from datasets import DatasetInfo, Features, Value, Version as HFVersion
+from datasets import DatasetInfo, Features, Value, Version as HFVersion, ClassLabel
+from datasets import Sequence as HFSequence
 from rapidfuzz import fuzz
 
-from typing import Dict, List, Tuple, Any, Sequence, Iterable
+from typing import Dict, List, Tuple, Any, Sequence, Iterable, Type
+from enum import Enum
 import re
 from datetime import datetime
 from importlib.metadata import version as pkg_version, PackageNotFoundError
@@ -397,20 +400,76 @@ def make_dataset_info(
 # Dataset type helpers and schema builders
 # =========================
 
-def hf_type_map(t: type) -> str:
-    if t is str:
-        return "string"
-    if t is int:
-        return "int64"
-    if t is float:
-        return "float32"
-    if t is bool:
-        return "bool"
-    if t is datetime:
-        return "date32"
-    else:
-        raise NotImplementedError
+def build_struct_schema_from_attributes(
+        attrib_names: List[str],
+        attrib_types: List[Type],
+        sample_values: List[Any]
+) -> dict:
+    """
+    Builds a HF Schema dict by looking at declared types AND sample values
+    (to detect lists of Enums).
+    """
+    schema_dict = {}
+
+    for name, declared_type, value in zip(attrib_names, attrib_types, sample_values):
+
+        # 1. Handle Enums (Scalar or List)
+        if isinstance(declared_type, type) and issubclass(declared_type, Enum):
+            # Extract all member names for the ClassLabel
+            # We use member.name ensures alignment with the string conversion later
+            labels = [member.name for member in declared_type]
+            feature = ClassLabel(names=labels)
+
+            # Check if the actual value is a list (Multi-label/Sequence)
+            # We check the value because declared_type is the scalar Enum class in your design
+            if isinstance(value, list):
+                feature = HFSequence(feature)
+
+            schema_dict[name] = feature
+
+        # 2. Handle Standard Scalars
+        elif declared_type is str:
+            schema_dict[name] = Value("string")
+        elif declared_type is int:
+            schema_dict[name] = Value("int64")
+        elif declared_type is float:
+            schema_dict[name] = Value("float32")
+        elif declared_type is bool:
+            schema_dict[name] = Value("bool")
+        elif declared_type is datetime:
+            schema_dict[name] = Value("date32")
+        else:
+            # Fallback or error
+            raise NotImplementedError(f"Type {declared_type} for attribute {name} is not supported.")
+
+    return schema_dict
 
 
-def build_struct_schema(names, types):
-    return {n: Value(hf_type_map(t)) for n, t in zip(names, types)}
+def serialize_attributes_for_hf(attributes: AttributesList) -> dict:
+    """
+    Converts an AttributesList to a dict, transforming Enums to their string names.
+    HF Dataset.from_list cannot handle raw Enum objects.
+    """
+    row = {}
+    for attr in attributes:
+        val = attr.value
+
+        # TODO: Why aren't we using the declared type here ? (attr.declared_type)
+        if val is None:
+            row[attr.name] = None
+            continue
+
+        # Handle List of Enums (convert [Enum.A, Enum.B] -> ["A", "B"])
+        if isinstance(val, list) and len(val) > 0 and isinstance(val[0], Enum): # TODO: What if it is an attributes list but the val = [None] ?
+            row[attr.name] = [e.name for e in val]
+
+        # Handle Single Enum (convert Enum.A -> "A")
+        elif isinstance(val, Enum):
+            row[attr.name] = val.name
+
+        # Handle Standard Types
+        else:
+            row[attr.name] = val
+
+    return row
+# TODO: Test the transition from multi-hot or one-hot to dense and list-based representations.
