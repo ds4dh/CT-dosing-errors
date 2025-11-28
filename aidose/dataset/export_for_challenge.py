@@ -9,7 +9,10 @@ from huggingface_hub import DatasetCard, HfApi
 from aidose.dataset import DATASET_VERSION
 from aidose import END_POINT_HF_DATASET_PATH, DATASETS_ROOT
 
-# --- Configuration ---
+# --- CONFIGURATION ---
+# OPTIONS: "phase1", "phase2", "release"
+PHASE = "phase1"
+
 HF_HUB_REPO_ID = "sssohrab/ct-dosing-errors-benchmark"
 HF_TOKEN = os.environ.get("HF_TOKEN")
 
@@ -62,7 +65,7 @@ def process_splits(ds_dict: DatasetDict) -> DatasetDict:
         desc="Cleaning features"
     )
 
-    # Set high-level info on the object itself
+    # Set high-level info
     for split in cleaned_ds:
         cleaned_ds[split].info.license = "CC BY 4.0"
         cleaned_ds[split].info.description = "CT-DOSING-ERRORS: Clinical trials dosing error benchmark."
@@ -71,6 +74,7 @@ def process_splits(ds_dict: DatasetDict) -> DatasetDict:
 
 
 def save_phase_data(dataset, phase_name: str, output_root: str):
+    """Saves server-side reference data (Always unmasked labels for scoring)."""
     input_dir = os.path.join(output_root, f"{phase_name}_input")
     ref_dir = os.path.join(output_root, f"{phase_name}_ref")
     os.makedirs(input_dir, exist_ok=True)
@@ -93,21 +97,15 @@ def save_phase_data(dataset, phase_name: str, output_root: str):
 
 
 def update_hf_metadata(repo_id: str, token: str, version_str: str):
-    """
-    Updates Dataset Card YAML with License, Tags, and Version.
-    """
     logger.info("Waiting 5s for HF API to settle before updating metadata...")
     time.sleep(5)
 
     logger.info(f"Updating Dataset Card metadata (Version: {version_str})...")
     try:
         card = DatasetCard.load(repo_id, token=token)
-
         card.data.license = "cc-by-4.0"
         card.data.tags = ["clinical-trials", "medication-safety", "tabular-classification"]
-        # Explicitly set the custom version string
         card.data.version = version_str
-
         card.push_to_hub(repo_id, token=token)
         logger.info("Dataset Card metadata updated successfully.")
     except Exception as e:
@@ -115,12 +113,8 @@ def update_hf_metadata(repo_id: str, token: str, version_str: str):
 
 
 def create_hf_tag(repo_id: str, token: str, version_str: str):
-    """
-    Creates a Git Tag on the Hugging Face repository.
-    """
     api = HfApi(token=token)
-    tag_name = f"v{version_str}"  # Standard convention to prefix with 'v'
-
+    tag_name = f"v{version_str}"
     logger.info(f"Creating Git Tag '{tag_name}' on HF Hub...")
     try:
         api.create_tag(
@@ -131,7 +125,6 @@ def create_hf_tag(repo_id: str, token: str, version_str: str):
         )
         logger.info(f"Successfully created tag: {tag_name}")
     except Exception as e:
-        # Don't crash if tag already exists, just warn
         if "already exists" in str(e):
             logger.warning(f"Tag '{tag_name}' already exists. Skipping.")
         else:
@@ -147,32 +140,56 @@ def export_for_codabench(ds_dict: DatasetDict, output_path: str, public_version:
     zips_dir = os.path.join(output_path, "zips_to_upload")
     os.makedirs(zips_dir, exist_ok=True)
 
-    # --- 1. Push to Hugging Face Hub ---
-    logger.info(f"Preparing to push Training Data to HF Hub: {HF_HUB_REPO_ID}...")
-    public_ds = DatasetDict({"train": ds_dict["train"]})
+    # --- 1. Construct Public Dataset based on PHASE ---
+    logger.info(f"Preparing data for PHASE: {PHASE}...")
 
+    # Always include Train (Unmasked)
+    splits_to_push = {"train": ds_dict["train"]}
+
+    if PHASE == "phase1":
+        # Phase 1: Validation (Masked), Test (Hidden)
+        logger.info("[Phase 1] Masking Validation targets. Excluding Test set.")
+        splits_to_push["validation"] = ds_dict["validation"].map(lambda x: {"target": -1})
+        # Test set is deliberately omitted
+
+    elif PHASE == "phase2":
+        # Phase 2: Validation (Unmasked), Test (Masked)
+        logger.info("[Phase 2] Unmasking Validation. Masking Test targets.")
+        splits_to_push["validation"] = ds_dict["validation"]  # Fully revealed
+        splits_to_push["test"] = ds_dict["test"].map(lambda x: {"target": -1})
+
+    elif PHASE == "release":
+        # Release: All Unmasked
+        logger.info("[Release] All splits unmasked.")
+        splits_to_push["validation"] = ds_dict["validation"]
+        splits_to_push["test"] = ds_dict["test"]
+
+    else:
+        raise ValueError(f"Unknown PHASE: {PHASE}")
+
+    public_ds = DatasetDict(splits_to_push)
+
+    # --- 2. Push to Hugging Face Hub ---
     try:
-        # Push Data
+        logger.info(f"Pushing to HF Hub: {HF_HUB_REPO_ID}...")
         public_ds.push_to_hub(HF_HUB_REPO_ID, token=HF_TOKEN, private=True)
-        logger.info("Successfully pushed TRAIN split to HF Hub.")
+        logger.info("Push successful.")
 
-        # Update Metadata
         update_hf_metadata(HF_HUB_REPO_ID, HF_TOKEN, public_version)
-
-        # Create Git Tag
         create_hf_tag(HF_HUB_REPO_ID, HF_TOKEN, public_version)
 
     except Exception as e:
         logger.error(f"Failed to push to HF Hub. Error: {e}")
 
-    # --- 2. Phase 1: Validation Data ---
-    logger.info("Processing Phase 1 (Validation)...")
+    # --- 3. Generate Server-Side Zips (Always Unmasked for Scoring) ---
+    # These files are for YOU to upload to CodaBench private resources.
+    # They must always contain the ground truth labels to perform scoring.
+    logger.info("Generating server-side scoring zips (Unmasked reference)...")
+
     val_in, val_ref = save_phase_data(ds_dict["validation"], "val", output_path)
     shutil.make_archive(os.path.join(zips_dir, "val_input"), 'zip', val_in)
     shutil.make_archive(os.path.join(zips_dir, "val_ref"), 'zip', val_ref)
 
-    # --- 3. Phase 2: Test Data ---
-    logger.info("Processing Phase 2 (Test)...")
     test_in, test_ref = save_phase_data(ds_dict["test"], "test", output_path)
     shutil.make_archive(os.path.join(zips_dir, "test_input"), 'zip', test_in)
     shutil.make_archive(os.path.join(zips_dir, "test_ref"), 'zip', test_ref)
@@ -181,8 +198,9 @@ def export_for_codabench(ds_dict: DatasetDict, output_path: str, public_version:
 
 
 if __name__ == "__main__":
-    # Define the custom public version string
-    PUBLIC_VERSION = f"{DATASET_VERSION}_CT-DEB26-release"
+    # Construct version string based on dataset version AND phase
+    # e.g., "0.2.2_CT-DEB26-phase1"
+    PUBLIC_VERSION = f"{DATASET_VERSION}_CT-DEB26-{PHASE}"
 
     SOURCE_PRIVATE_DATASET_PATH = END_POINT_HF_DATASET_PATH
     DESTINATION_PUBLIC_DATASET_PATH = os.path.join(
