@@ -1,137 +1,197 @@
+import os
+import shutil
+import logging
+import time
+from typing import Dict, Any, List
+
+from datasets import load_dataset, DatasetDict, Features
+from huggingface_hub import DatasetCard, HfApi
 from aidose.dataset import DATASET_VERSION
 from aidose import END_POINT_HF_DATASET_PATH, DATASETS_ROOT
 
-from datasets import load_dataset, DatasetDict
+# --- Configuration ---
+HF_HUB_REPO_ID = "sssohrab/ct-dosing-errors-benchmark"
+HF_TOKEN = os.environ.get("HF_TOKEN")
 
-from typing import Dict, Any, List
-import os
-import shutil
+# Setup Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+
+def adapt_features(original_features: Features) -> Features:
+    """Creates a new Features schema based on the original one."""
+    new_features_dict = {}
+    for col_name, feature in original_features.items():
+        if col_name.startswith("FEATURE_"):
+            new_name = col_name.replace("FEATURE_", "")
+            new_features_dict[new_name] = feature
+        elif col_name == "LABEL_wilson_label":
+            new_features_dict["target"] = feature
+        elif col_name == "METADATA_nctId":
+            new_features_dict["nctid"] = feature
+    return Features(new_features_dict)
 
 
 def clean_and_rename(example: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Filters and renames columns:
-    1. Strips 'FEATURE_' prefix.
-    2. Retains 'LABEL_wilson_label' as 'target'.
-    3. Retains 'METADATA_nctId' as 'nctid'.
-    """
     new_example: Dict[str, Any] = {}
-
-    # 1. Keep and rename FEATURE columns
     for key, value in example.items():
         if key.startswith("FEATURE_"):
             new_key = key.replace("FEATURE_", "")
             new_example[new_key] = value
-
-    # 2. Rename Target
     if "LABEL_wilson_label" in example:
         new_example["target"] = example["LABEL_wilson_label"]
-
-    # 3. Rename ID (Crucial for alignment)
     if "METADATA_nctId" in example:
         new_example["nctid"] = example["METADATA_nctId"]
-
     return new_example
 
 
 def process_splits(ds_dict: DatasetDict) -> DatasetDict:
-    """
-    Applies the cleaning function to all splits in the DatasetDict.
-    """
     original_cols: List[str] = ds_dict["train"].column_names
+    logger.info("Adapting feature schema (preserving ClassLabels)...")
+    new_features = adapt_features(ds_dict["train"].features)
 
+    logger.info("Cleaning and renaming features across all splits...")
     cleaned_ds = ds_dict.map(
         clean_and_rename,
         remove_columns=original_cols,
-        desc="Cleaning and renaming features"
+        features=new_features,
+        desc="Cleaning features"
     )
+
+    # Set high-level info on the object itself
+    for split in cleaned_ds:
+        cleaned_ds[split].info.license = "CC BY 4.0"
+        cleaned_ds[split].info.description = "CT-DOSING-ERRORS: Clinical trials dosing error benchmark."
 
     return cleaned_ds
 
 
 def save_phase_data(dataset, phase_name: str, output_root: str):
-    """
-    Saves Features (Parquet) and Labels (CSV).
-    """
     input_dir = os.path.join(output_root, f"{phase_name}_input")
     ref_dir = os.path.join(output_root, f"{phase_name}_ref")
-
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(ref_dir, exist_ok=True)
 
-    # 1. Save X (Features) -> Parquet
-    # Drop target, BUT KEEP 'nctid' so users can identify rows
     cols_to_keep = [c for c in dataset.column_names if c != "target"]
     features = dataset.select_columns(cols_to_keep)
 
-    features.to_parquet(os.path.join(input_dir, f"{phase_name}_features.parquet"))
+    feat_path = os.path.join(input_dir, f"{phase_name}_features.parquet")
+    features.to_parquet(feat_path)
+    logger.info(f"Saved {phase_name} features to {feat_path}")
 
-    # 2. Save Y (Labels) -> CSV
-    # Keep 'nctid' and 'target'
     if "target" in dataset.column_names and "nctid" in dataset.column_names:
         labels = dataset.select_columns(["nctid", "target"])
-        # Save as CSV for server compatibility (no pyarrow needed for scoring)
-        labels.to_csv(os.path.join(ref_dir, f"{phase_name}_labels.csv"), index=False)
+        label_path = os.path.join(ref_dir, f"{phase_name}_labels.csv")
+        labels.to_csv(label_path, index=False)
+        logger.info(f"Saved {phase_name} labels to {label_path}")
 
     return input_dir, ref_dir
 
 
-def export_for_codabench(ds_dict: DatasetDict, output_path: str) -> None:
+def update_hf_metadata(repo_id: str, token: str, version_str: str):
     """
-    Generates the following structure and ZIPS them:
-    1. public_data.zip      -> Contains Train features+labels (For users to download)
-    2. val_input.zip        -> Validation Features (Phase 1 Server Input)
-    3. val_ref.zip          -> Validation Labels (Phase 1 Server Ground Truth)
-    4. test_input.zip       -> Test Features (Phase 2 Server Input)
-    5. test_ref.zip         -> Test Labels (Phase 2 Server Ground Truth)
+    Updates Dataset Card YAML with License, Tags, and Version.
     """
+    logger.info("Waiting 5s for HF API to settle before updating metadata...")
+    time.sleep(5)
 
-    # Safety: Clean output directory
+    logger.info(f"Updating Dataset Card metadata (Version: {version_str})...")
+    try:
+        card = DatasetCard.load(repo_id, token=token)
+
+        card.data.license = "cc-by-4.0"
+        card.data.tags = ["clinical-trials", "medication-safety", "tabular-classification"]
+        # Explicitly set the custom version string
+        card.data.version = version_str
+
+        card.push_to_hub(repo_id, token=token)
+        logger.info("Dataset Card metadata updated successfully.")
+    except Exception as e:
+        logger.error(f"Failed to update Dataset Card metadata: {e}")
+
+
+def create_hf_tag(repo_id: str, token: str, version_str: str):
+    """
+    Creates a Git Tag on the Hugging Face repository.
+    """
+    api = HfApi(token=token)
+    tag_name = f"v{version_str}"  # Standard convention to prefix with 'v'
+
+    logger.info(f"Creating Git Tag '{tag_name}' on HF Hub...")
+    try:
+        api.create_tag(
+            repo_id=repo_id,
+            repo_type="dataset",
+            tag=tag_name,
+            tag_message=f"Release {version_str} for CT-DEB'26"
+        )
+        logger.info(f"Successfully created tag: {tag_name}")
+    except Exception as e:
+        # Don't crash if tag already exists, just warn
+        if "already exists" in str(e):
+            logger.warning(f"Tag '{tag_name}' already exists. Skipping.")
+        else:
+            logger.error(f"Failed to create Git tag: {e}")
+
+
+def export_for_codabench(ds_dict: DatasetDict, output_path: str, public_version: str) -> None:
     if os.path.exists(output_path):
-        print(f"Cleaning existing directory: {output_path}")
+        logger.info(f"Cleaning existing directory: {output_path}")
         shutil.rmtree(output_path)
 
     os.makedirs(output_path, exist_ok=True)
     zips_dir = os.path.join(output_path, "zips_to_upload")
     os.makedirs(zips_dir, exist_ok=True)
 
-    # --- 1. Public Data (Train Only) ---
-    # Users download this to train their models
-    print("Processing Public Data (Train)...")
-    public_dir = os.path.join(output_path, "public_data")
-    os.makedirs(public_dir, exist_ok=True)
-    ds_dict["train"].to_parquet(os.path.join(public_dir, "train_data.parquet"))
+    # --- 1. Push to Hugging Face Hub ---
+    logger.info(f"Preparing to push Training Data to HF Hub: {HF_HUB_REPO_ID}...")
+    public_ds = DatasetDict({"train": ds_dict["train"]})
 
-    # Zip Public Data
-    shutil.make_archive(os.path.join(zips_dir, "public_data"), 'zip', public_dir)
+    try:
+        # Push Data
+        public_ds.push_to_hub(HF_HUB_REPO_ID, token=HF_TOKEN, private=True)
+        logger.info("Successfully pushed TRAIN split to HF Hub.")
+
+        # Update Metadata
+        update_hf_metadata(HF_HUB_REPO_ID, HF_TOKEN, public_version)
+
+        # Create Git Tag
+        create_hf_tag(HF_HUB_REPO_ID, HF_TOKEN, public_version)
+
+    except Exception as e:
+        logger.error(f"Failed to push to HF Hub. Error: {e}")
 
     # --- 2. Phase 1: Validation Data ---
-    # Hidden on server. Users predict on this for the Leaderboard.
-    print("Processing Phase 1 (Validation)...")
+    logger.info("Processing Phase 1 (Validation)...")
     val_in, val_ref = save_phase_data(ds_dict["validation"], "val", output_path)
     shutil.make_archive(os.path.join(zips_dir, "val_input"), 'zip', val_in)
     shutil.make_archive(os.path.join(zips_dir, "val_ref"), 'zip', val_ref)
 
     # --- 3. Phase 2: Test Data ---
-    # Hidden on server. Used for final auto-migration grading.
-    print("Processing Phase 2 (Test)...")
+    logger.info("Processing Phase 2 (Test)...")
     test_in, test_ref = save_phase_data(ds_dict["test"], "test", output_path)
     shutil.make_archive(os.path.join(zips_dir, "test_input"), 'zip', test_in)
     shutil.make_archive(os.path.join(zips_dir, "test_ref"), 'zip', test_ref)
 
-    print(f"Export complete. Upload the files in '{zips_dir}' to CodaBench.")
+    logger.info(f"Export complete. Server zips are ready in '{zips_dir}'.")
 
 
 if __name__ == "__main__":
-    # Configuration
+    # Define the custom public version string
+    PUBLIC_VERSION = f"{DATASET_VERSION}_CT-DEB26-release"
+
     SOURCE_PRIVATE_DATASET_PATH = END_POINT_HF_DATASET_PATH
     DESTINATION_PUBLIC_DATASET_PATH = os.path.join(
         DATASETS_ROOT,
         "CT-DOSING-ERROR-BENCHMARK",
-        f"{DATASET_VERSION}_CT-DEB26-rc1"
+        f"{PUBLIC_VERSION}"
     )
 
-    print(f"Loading dataset from {SOURCE_PRIVATE_DATASET_PATH}...")
+    logger.info(f"Loading dataset from {SOURCE_PRIVATE_DATASET_PATH}...")
     dataset = load_dataset(SOURCE_PRIVATE_DATASET_PATH)
 
     if not isinstance(dataset, DatasetDict):
@@ -139,4 +199,4 @@ if __name__ == "__main__":
 
     # Run Pipeline
     cleaned_dataset = process_splits(dataset)
-    export_for_codabench(cleaned_dataset, DESTINATION_PUBLIC_DATASET_PATH)
+    export_for_codabench(cleaned_dataset, DESTINATION_PUBLIC_DATASET_PATH, PUBLIC_VERSION)
