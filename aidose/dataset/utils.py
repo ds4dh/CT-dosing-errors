@@ -1,12 +1,15 @@
+from aidose.dataset.attribute import AttributesList
 from aidose.ctgov.structures import Study, InterventionType, StudyType, Status, StatusModule
 
 from aidose.meddra.graph import MedDRALevel
 from aidose.meddra.utils import DescendantEntry
 
-from datasets import DatasetInfo, Features, Value, Version as HFVersion
+from datasets import DatasetInfo, Features, Value, Version as HFVersion, ClassLabel
+from datasets import Sequence as HFSequence
 from rapidfuzz import fuzz
 
-from typing import Dict, List, Tuple, Any, Sequence, Iterable
+from typing import Dict, List, Tuple, Any, Sequence, Iterable, Type
+from enum import Enum
 import re
 from datetime import datetime
 from importlib.metadata import version as pkg_version, PackageNotFoundError
@@ -397,20 +400,116 @@ def make_dataset_info(
 # Dataset type helpers and schema builders
 # =========================
 
-def hf_type_map(t: type) -> str:
-    if t is str:
-        return "string"
-    if t is int:
-        return "int64"
-    if t is float:
-        return "float32"
-    if t is bool:
-        return "bool"
-    if t is datetime:
-        return "date32"
-    else:
-        raise NotImplementedError
+def build_struct_schema_from_attributes(
+        attrib_names: List[str],
+        attrib_types: List[Type],
+        full_dataset_rows: List[Any]
+) -> dict:
+    """
+    Builds an HF Schema dict.
+
+    It scans the data to determine if an Enum field is a Sequence (List) or a Scalar.
+    It does NOT rely solely on the first row.
+    """
+    schema_dict = {}
+
+    # Pre-calculate which columns are actually lists by scanning the data
+    # We create a set of names that are detected as lists
+    names_that_are_lists = set()
+
+    # We map names to their index to grab values quickly from rows
+    name_to_idx = {name: i for i, name in enumerate(attrib_names)}
+
+    # Check each attribute
+    for name, declared_type in zip(attrib_names, attrib_types):
+        # We only care about ambiguity for Enum types (Scalar vs List)
+        # Standard types (str, int) don't usually switch between scalar/list in this specific architecture
+        if isinstance(declared_type, type) and issubclass(declared_type, Enum):
+            idx = name_to_idx[name]
+
+            # Scan rows until we find a definitive List, or we run out of data
+            is_list = False
+            for row in full_dataset_rows:
+                # row is AttributesList. Access by index is fast.
+                val = row[idx].value
+
+                if val is None:
+                    continue
+                if isinstance(val, list):
+                    is_list = True
+                    break
+                # If we found a scalar (single Enum), we effectively know it's likely scalar,
+                # BUT purely safe code would keep scanning in case you have mixed types
+                # (though your Attribute class prevents mixed types).
+                # If we see one Scalar, we assume it's Scalar.
+                break
+
+            if is_list:
+                names_that_are_lists.add(name)
+
+    # Now build the schema
+    for name, declared_type in zip(attrib_names, attrib_types):
+
+        # 1. Handle Enums
+        if isinstance(declared_type, type) and issubclass(declared_type, Enum):
+            labels = [member.name for member in declared_type]
+            feature = ClassLabel(names=labels)
+
+            # Use our scanned knowledge, not just the first row
+            if name in names_that_are_lists:
+                feature = HFSequence(feature)
+
+            schema_dict[name] = feature
+
+        # 2. Handle Standard Scalars
+        elif declared_type is str:
+            schema_dict[name] = Value("string")
+        elif declared_type is int:
+            schema_dict[name] = Value("int64")
+        elif declared_type is float:
+            schema_dict[name] = Value("float32")
+        elif declared_type is bool:
+            schema_dict[name] = Value("bool")
+        elif declared_type is datetime:
+            schema_dict[name] = Value("date32")
+        else:
+            raise NotImplementedError(f"Type {declared_type} for attribute {name} is not supported.")
+
+    return schema_dict
 
 
-def build_struct_schema(names, types):
-    return {n: Value(hf_type_map(t)) for n, t in zip(names, types)}
+def serialize_attributes_for_hf(attributes: List[Any]) -> dict:
+    """
+    Converts an AttributesList to a dict, transforming Enums to their string names.
+    Uses 'declared_type' as the source of truth.
+    """
+    row = {}
+    for attr in attributes:
+        val = attr.value
+        d_type = attr.declared_type
+
+        # 1. Handle Enums (Scalar or Sequence)
+        if isinstance(d_type, type) and issubclass(d_type, Enum):
+            if val is None:
+                row[attr.name] = None
+
+            elif isinstance(val, list):
+                # Handle empty lists or lists of None
+                # We filter out None to ensure HF doesn't crash on [None] inside a string sequence
+                clean_list = [e.name for e in val if e is not None]
+                row[attr.name] = clean_list
+
+            elif isinstance(val, Enum):
+                row[attr.name] = val.name
+
+            else:
+                # Should not happen given Attribute validation, but fallback
+                row[attr.name] = str(val)
+
+        # 2. Handle Standard Types
+        else:
+            # Pass through standard types (int, float, str, bool, datetime)
+            # HF handles Python datetime objects automatically for 'date32'
+            row[attr.name] = val
+
+    return row
