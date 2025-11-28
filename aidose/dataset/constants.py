@@ -6,7 +6,8 @@ from datetime import datetime
 import os
 
 DATASET_NAME = "CT-DOSING-ERRORS"
-DATASET_VERSION = "0.2.1"
+DATASET_VERSION = "0.2.2"
+ENUM_FIELDS_EXPANSION = False  # Whether to expand categorical fields as one-hot or multi-hot encoding.
 
 if DATASETS_ROOT is not None and os.path.exists(DATASETS_ROOT):
     END_POINT_HF_DATASET_PATH = os.path.join(DATASETS_ROOT, DATASET_NAME, DATASET_VERSION)

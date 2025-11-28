@@ -4,7 +4,8 @@ from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
                                       ALPHA_WILSON,
                                       TRAINING_SIZE,
                                       VALIDATION_SIZE,
-                                      TEST_SIZE)
+                                      TEST_SIZE,
+                                      ENUM_FIELDS_EXPANSION)
 from aidose.dataset import (
     MEDDRA_ADE_LABELS_PATH,
     MEDDRA_HLGT_CODES_LITERAL,
@@ -18,7 +19,8 @@ from aidose.dataset import (
 
 from aidose.dataset.utils import (include_trial_after_sequential_filtering,
                                   make_dataset_info,
-                                  build_struct_schema)
+                                  build_struct_schema_from_attributes,
+                                  serialize_attributes_for_hf)
 
 from aidose.dataset.ade import process_study_for_ade_risks
 from aidose.dataset.ade import ADEAnalysisResultForStudy
@@ -234,7 +236,8 @@ def main():
             map_of_nctid_to_extracted_texts_from_pdfs=map_of_nctid_to_extracted_texts_from_pdfs
         )
 
-        attribs = attribs.expand_enums()
+        if ENUM_FIELDS_EXPANSION:
+            attribs = attribs.expand_enums()
         dataset_attribs.append(attribs)
 
     logger.info("Finalized with the extraction of features, labels and the metadata.")
@@ -258,8 +261,13 @@ def main():
     # -------------------------------------------------
     # 7)  Dataset creation with schemas
     # -----------------------------------
-    attrib_names, attrib_types = dataset_attribs[0].get_names(), dataset_attribs[0].get_types()
-    schema = Features(build_struct_schema(attrib_names, attrib_types))
+    first_row = dataset_attribs[0]
+    attrib_names = first_row.get_names()
+    attrib_types = first_row.get_types()
+    sample_values = first_row.get_values()
+
+    schema_dict = build_struct_schema_from_attributes(attrib_names, attrib_types, sample_values)
+    schema = Features(schema_dict)
 
     ds_info = make_dataset_info(
         dataset_version=DATASET_VERSION,
@@ -279,19 +287,19 @@ def main():
     )
 
     hf_dataset_train = Dataset.from_list(
-        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_attribs_train],
+        [serialize_attributes_for_hf(fl) for fl in dataset_attribs_train],
         features=schema,
         info=ds_info
     )
 
     hf_dataset_valid = Dataset.from_list(
-        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_attribs_valid],
+        [serialize_attributes_for_hf(fl) for fl in dataset_attribs_valid],
         features=schema,
         info=ds_info
     )
 
     hf_dataset_test = Dataset.from_list(
-        [dict(zip(fl.get_names(), fl.get_values())) for fl in dataset_attribs_test],
+        [serialize_attributes_for_hf(fl) for fl in dataset_attribs_test],
         features=schema,
         info=ds_info
     )
