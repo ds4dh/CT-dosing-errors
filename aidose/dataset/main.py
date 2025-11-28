@@ -261,12 +261,16 @@ def main():
     # -------------------------------------------------
     # 7)  Dataset creation with schemas
     # -----------------------------------
-    first_row = dataset_attribs[0]
+    first_row = dataset_attribs[0]  # To fetch the names and types of attributes from the first row
     attrib_names = first_row.get_names()
     attrib_types = first_row.get_types()
-    sample_values = first_row.get_values()
 
-    schema_dict = build_struct_schema_from_attributes(attrib_names, attrib_types, sample_values)
+    schema_dict = build_struct_schema_from_attributes(
+        attrib_names,
+        attrib_types,
+        dataset_attribs
+    )
+
     schema = Features(schema_dict)
 
     ds_info = make_dataset_info(
