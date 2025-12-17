@@ -7,6 +7,8 @@ import os
 
 DATASET_NAME = "CT-DOSING-ERRORS"
 DATASET_VERSION = "0.2.2"
+HF_HUB_REPO_ID = "sssohrab/ct-dosing-errors"
+
 ENUM_FIELDS_EXPANSION = False  # Whether to expand categorical fields as one-hot or multi-hot encoding.
 
 if DATASETS_ROOT is not None and os.path.exists(DATASETS_ROOT):
@@ -18,6 +20,8 @@ else:
 
 MEDDRA_ADE_LABELS_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
 MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"
+# 10079145: 'Medication errors and other product use errors and issues'
+# 10079159: 'Overdoses and underdoses NEC'
 
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
                                                "ctgov_nctids_list_filtered.txt")

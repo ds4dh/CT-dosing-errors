@@ -10,3 +10,5 @@ if DATASETS_ROOT is not None:
     os.makedirs(DATASETS_ROOT, exist_ok=True)
 
 PACKAGE_NAME = "aidose"
+
+REPO_HOMEPAGE_URL = "https://github.com/ds4dh/CT-dosing-errors"
