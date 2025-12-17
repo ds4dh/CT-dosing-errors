@@ -7,6 +7,8 @@ import os
 
 DATASET_NAME = "CT-DOSING-ERRORS"
 DATASET_VERSION = "0.2.2"
+HF_HUB_REPO_ID = "sssohrab/ct-dosing-errors"
+
 ENUM_FIELDS_EXPANSION = False  # Whether to expand categorical fields as one-hot or multi-hot encoding.
 
 if DATASETS_ROOT is not None and os.path.exists(DATASETS_ROOT):
