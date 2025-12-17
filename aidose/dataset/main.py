@@ -1,4 +1,4 @@
-from aidose import PACKAGE_NAME
+from aidose import PACKAGE_NAME, REPO_HOMEPAGE_URL
 
 from aidose.dataset.constants import (WILSON_PROBA_THRESHOLD,
                                       ALPHA_WILSON,
@@ -287,7 +287,8 @@ def main():
             MEDDRA_VERSION),
         license_str="CC BY 4.0",
         package_name=PACKAGE_NAME,
-        features=schema
+        features=schema,
+        homepage=REPO_HOMEPAGE_URL
     )
 
     hf_dataset_train = Dataset.from_list(

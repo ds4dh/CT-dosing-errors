@@ -18,6 +18,8 @@ else:
 
 MEDDRA_ADE_LABELS_PATH = os.path.join(MEDDRA_CREATED_ARTIFACTS_DIR, "meddra_positive_labels.json")
 MEDDRA_HLGT_CODES_LITERAL = "[('HLGT', '10079145'), ('HLGT', '10079159')]"
+# 10079145: 'Medication errors and other product use errors and issues'
+# 10079159: 'Overdoses and underdoses NEC'
 
 CTGOV_NCTIDS_LIST_FILTERED_PATH = os.path.join(os.path.dirname(CTGOV_NCTIDS_LIST_ALL_PATH),
                                                "ctgov_nctids_list_filtered.txt")
