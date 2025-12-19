@@ -7,7 +7,7 @@ errors in interventional clinical trials`. Specifically, the following models ar
 
 - **ClinicalModernBERT** — a BERT style model that consider only text features
 - **XGBoost** — an XGBoost that uses only categorical features
-- **LateFusionModelMultimodal** — a multimodal baseline that combines `ClinicalModernBERT` and `XGBoost` predictions
+- **LateFusionModelMultimodal** — a basic multimodal baseline that combines `ClinicalModernBERT` and `XGBoost` predictions
 
 ---
 
@@ -18,22 +18,16 @@ The repository is organized as follows:
 * **`main.py`** — Main entry point to train and evaluate all baselines.
 * **`constant.py`** — Contains fixed variable names (e.g., folder paths).
 * **`construct_hyperparameter_search.py`** — Contains functions that construct the hyperparameter searching space for
-  the specific model and task. This searching space is used by Optuna to optimize XGBoost hyperparameter. Specifically,
-  it is used by the `OurXGBoost` and `Multimodal` models.
+  the specific model and task. This searching space is used by Optuna during hyperparameter search. Specifically, it is used by the `OurXGBoost` and `LateFusionModel` models.
 * **`CustomTrainer.py`** — Contains two classes used by `OurClinicalModernBERT`:
 
     * **`CustomTrainer`** — A Hugging Face `Trainer` subclass that can build *class-balanced* training batches.
     * **`BalancedBatchSampler`** — Class-balanced batch sampler for imbalanced datasets, used by `CustomTrainer`.
 * **`DosingErrorDataset.py`** — Defines `DosingErrorDataset`, a minimal dataset wrapper for ModernBERT-style sequence
   tasks (classification or regression). Padding is handled later by a data collator.
-* **`our_clinicalModernBERT.py`** — Implements `OurClinicalModernBERT`, a ClinicalModernBERT-based model that operates *
-  *exclusively on text features**.
+* **`our_clinicalModernBERT.py`** — Implements `OurClinicalModernBERT`, a ClinicalModernBERT-based model that operates **exclusively on text features**.
 * **`our_xgboost.py`** — Implements `OurXGBoost`, an XGBoost baseline that operates **exclusively on categorical
   features**.
-* **`Multimodal.py`** — Implements the `Multimodal` baseline model, which combines two components:
-    - `OurClinicalModernBERT` for generating embeddings from text features.
-    - `OurXGBoost` for handling categorical and numerical features, augmented with the text embeddings.
-
 * **`preprocessing.py`** — Functions to preprocess the AIDosE dataset before feeding it to the different models.
 * **`utils.py`** — Utility functions.
 
