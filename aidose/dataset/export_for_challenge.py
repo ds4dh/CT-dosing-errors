@@ -11,7 +11,7 @@ from aidose import END_POINT_HF_DATASET_PATH, DATASETS_ROOT
 
 # --- CONFIGURATION ---
 # OPTIONS: "phase1", "phase2", "release"
-PHASE = "phase1"
+PHASE = "phase2"
 
 HF_HUB_REPO_ID = "sssohrab/ct-dosing-errors-benchmark"
 HF_TOKEN = os.environ.get("HF_TOKEN")
