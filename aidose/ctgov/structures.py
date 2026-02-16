@@ -13,6 +13,8 @@ from enum import Enum
 from typing import Any
 from datetime import datetime
 
+import re
+
 
 # ==============================================================================
 #  Enums
@@ -115,11 +117,28 @@ class ArmGroupType(Enum):
     OTHER = "OTHER"
 
 
-class MeasureType(Enum):
+class MeasureParam(Enum):
+    GEOMETRIC_MEAN = "GEOMETRIC_MEAN"
+    GEOMETRIC_LEAST_SQUARES_MEAN = "GEOMETRIC_LEAST_SQUARES_MEAN"
+    LEAST_SQUARES_MEAN = "LEAST_SQUARES_MEAN"
+    LOG_MEAN = "LOG_MEAN"
+    MEAN = "MEAN"
+    MEDIAN = "MEDIAN"
+    NUMBER = "NUMBER"
+    COUNT_OF_PARTICIPANTS = "COUNT_OF_PARTICIPANTS"
+    COUNT_OF_UNITS = "COUNT_OF_UNITS"
+
+
+class OutcomeMeasureType(Enum):
     PRIMARY = "PRIMARY"
     SECONDARY = "SECONDARY"
     OTHER_PRE_SPECIFIED = "OTHER_PRE_SPECIFIED"
     POST_HOC = "POST_HOC"
+
+
+class ReportingStatus(Enum):
+    NOT_POSTED = "NOT_POSTED"
+    POSTED = "POSTED"
 
 
 class SamplingMethod(Enum):
@@ -211,20 +230,37 @@ class Type(Enum):
     OTHER = "OTHER"
 
 
-class PValue(Enum):
-    STUDENT_T_TEST_2_SIDED = "STUDENT_T_TEST_2_SIDED"
+class StatisticalMethod(Enum):
+    ANCOVA = "ANCOVA"
     ANOVA = "ANOVA"
-    CHI_SQUARED = "CHI_SQUARED"
-    CHI_SQUARED_CORRECTION = "CHI_SQUARED_CORRECTION"
-    COCHRAN_MANTEL_HAENSZEL = "COCHRAN_MANTEL_HAENSZEL"
-    FISHER_EXACT = "FISHER_EXACT"
-    KRUSKAL_WALLIS = "KRUSKAL_WALLIS"
-    LOG_RANK = "LOG_RANK"
-    MCNEMAR = "MCNEMAR"
-    WILCOXON_MANN_WHITNEY = "WILCOXON_MANN_WHITNEY"
-    REGRESSION_LINEAR = "REGRESSION_LINEAR"
-    REGRESSION_LOGISTIC = "REGRESSION_LOGISTIC"
-    REGRESSION_COX = "REGRESSION_COX"
+    CHI_SQUARED = "Chi-Squared"
+    CHI_SQUARED_CORRECTED = "Chi-Squared, Corrected"
+    COCHRAN_MANTEL_HAENSZEL = "Cochran-Mantel-Haenszel"
+    FISHER_EXACT = "Fisher Exact"
+    KRUSKAL_WALLIS = "Kruskal-Wallis"
+    LOG_RANK = "Log Rank"
+    MANTEL_HAENSZEL = "Mantel Haenszel"
+    MCNEMAR = "McNemar"
+    MIXED_MODELS_ANALYSIS = "Mixed Models Analysis"
+    REGRESSION_COX = "Regression, Cox"
+    REGRESSION_LINEAR = "Regression, Linear"
+    REGRESSION_LOGISTIC = "Regression, Logistic"
+    SIGN_TEST = "Sign Test"
+    T_TEST_1_SIDED = "t-Test, 1-Sided"
+    T_TEST_2_SIDED = "t-Test, 2-Sided"
+    WILCOXON_MANN_WHITNEY = "Wilcoxon (Mann-Whitney)"
+    OTHER = "Other"
+
+
+class ConfidenceIntervalNumSides(Enum):
+    ONE_SIDED = "ONE_SIDED"
+    TWO_SIDED = "TWO_SIDED"
+
+
+class NonInferiorityType(Enum):
+    SUPERIORITY_OR_OTHER = "SUPERIORITY_OR_OTHER"
+    NON_INFERIORITY = "NON_INFERIORITY"
+    EQUIVALENCE = "EQUIVALENCE"
 
 
 class AnnotationType(Enum):
@@ -440,7 +476,7 @@ class BaselineCharacteristicsModule(BaseModel):
 
 class OutcomeMeasuresModule(BaseModel):
     """A module of a clinical study results that includes information about the outcome measures of the study."""
-    measures: list[Measure] = Field(default_factory=list)
+    outcomeMeasures: list[Measure] = Field(default_factory=list)
 
 
 class AdverseEventsModule(BaseModel):
@@ -936,13 +972,157 @@ class DropWithdraw(BaseModel):
 class Measure(BaseModel):
     """A measure in the study."""
     title: str | None = None
+    type: OutcomeMeasureType | None = None
     description: str | None = None
     populationDescription: str | None = None
-    unit: str | None = None
+    reportingStatus: ReportingStatus | None = None
+    paramType: MeasureParam | None = None
+    unitOfMeasure: str | None = None
+    timeFrame: str | None = None
     param: str | None = None
-    dispersion: str | None = None
+    dispersionType: str | None = None
+    groups: list[Group] = Field(default_factory=list)
     denoms: list[Denom] = Field(default_factory=list)
     classes: list[Class] = Field(default_factory=list)
+    analyses: list[OutcomeAnalysis] = Field(default_factory=list)
+
+
+class OutcomeAnalysis(BaseModel):
+    """
+    Outcome analysis for an outcome measure.
+    Mirrors fields observed under outcomeMeasures[*].analyses[*].
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    # Group comparison / scope
+    groupIds: list[str] = Field(default_factory=list)
+    groupDescription: str | None = None
+
+    # Non-inferiority / superiority metadata
+    testedNonInferiority: bool | None = None
+    nonInferiorityType: NonInferiorityType | None = None
+
+    # P-value and comments (often formatted as strings: "<0.05", ".04")
+    pValue: str | None = None
+    pValueComment: str | None = None
+
+    # Statistical method and comments (highly heterogeneous strings)
+    statisticalMethod: StatisticalMethod | None = None
+    otherMethodName: str | None = None
+    statisticalComment: str | None = None
+
+    # Confidence interval metadata
+    ciPctValue: str | None = None  # often "95"
+    ciNumSides: ConfidenceIntervalNumSides | None = None
+    ciLowerLimit: str | None = None
+    ciUpperLimit: str | None = None
+
+    # Analysis-level effect size fields (seen in Cox regression examples)
+    paramType: str | None = None  # e.g., "Hazard Ratio (HR)"
+    paramValue: str | None = None  # e.g., "0.91"
+
+    @field_validator("pValue", mode="before")
+    @classmethod
+    def _normalize_pvalue(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    @field_validator("statisticalMethod", mode="before")
+    @classmethod
+    def normalize_statistical_method(cls, v: Any) -> Any:
+        """
+        Map common CTGov string variants to the canonical StatisticalMethod enum values.
+        Keeps strict typing while handling messy capitalization/punctuation.
+        """
+        if v is None or isinstance(v, StatisticalMethod):
+            return v
+
+        s = str(v).strip()
+        if not s:
+            return None
+
+        # Normalize whitespace and punctuation
+        s_norm = re.sub(r"\s+", " ", s).strip()
+        s_key = s_norm.lower()
+
+        # Common variants observed in CTGov
+        alias_map = {
+            "t-test, 2 sided": StatisticalMethod.T_TEST_2_SIDED,
+            "t test, 2 sided": StatisticalMethod.T_TEST_2_SIDED,
+            "t-test, 2-sided": StatisticalMethod.T_TEST_2_SIDED,
+            "t test, 2-sided": StatisticalMethod.T_TEST_2_SIDED,
+            "t-test, two sided": StatisticalMethod.T_TEST_2_SIDED,
+            "t-test, 1 sided": StatisticalMethod.T_TEST_1_SIDED,
+            "t test, 1 sided": StatisticalMethod.T_TEST_1_SIDED,
+            "t-test, 1-sided": StatisticalMethod.T_TEST_1_SIDED,
+            "t test, 1-sided": StatisticalMethod.T_TEST_1_SIDED,
+
+            "wilcoxon (mann-whitney)": StatisticalMethod.WILCOXON_MANN_WHITNEY,
+            "wilcoxon (mann whitney)": StatisticalMethod.WILCOXON_MANN_WHITNEY,
+            "wilcoxon mann-whitney": StatisticalMethod.WILCOXON_MANN_WHITNEY,
+            "wilcoxon mann whitney": StatisticalMethod.WILCOXON_MANN_WHITNEY,
+
+            "chi-squared": StatisticalMethod.CHI_SQUARED,
+            "chi squared": StatisticalMethod.CHI_SQUARED,
+            "chi-squared, corrected": StatisticalMethod.CHI_SQUARED_CORRECTED,
+            "chi squared, corrected": StatisticalMethod.CHI_SQUARED_CORRECTED,
+
+            "mantel haenszel": StatisticalMethod.MANTEL_HAENSZEL,
+            "cochran mantel haenszel": StatisticalMethod.COCHRAN_MANTEL_HAENSZEL,
+
+            "regression, cox": StatisticalMethod.REGRESSION_COX,
+            "regression, linear": StatisticalMethod.REGRESSION_LINEAR,
+            "regression, logistic": StatisticalMethod.REGRESSION_LOGISTIC,
+
+            "mixed models analysis": StatisticalMethod.MIXED_MODELS_ANALYSIS,
+            "log rank": StatisticalMethod.LOG_RANK,
+            "fisher exact": StatisticalMethod.FISHER_EXACT,
+            "kruskal-wallis": StatisticalMethod.KRUSKAL_WALLIS,
+            "kruskal wallis": StatisticalMethod.KRUSKAL_WALLIS,
+            "ancova": StatisticalMethod.ANCOVA,
+            "anova": StatisticalMethod.ANOVA,
+            "mcnemar": StatisticalMethod.MCNEMAR,
+            "sign test": StatisticalMethod.SIGN_TEST,
+            "other": StatisticalMethod.OTHER,
+        }
+
+        if s_key in alias_map:
+            return alias_map[s_key]
+
+        # If it already matches canonical Enum values (exact), allow it
+        for m in StatisticalMethod:
+            if s_norm == m.value:
+                return m
+
+        # If you want strict behavior, raise here.
+        # But for robustness, map unknown to OTHER and preserve via otherMethodName.
+        # Returning OTHER prevents validation failure:
+        return StatisticalMethod.OTHER
+
+    @field_validator("nonInferiorityType", mode="before")
+    @classmethod
+    def normalize_non_inferiority_type(cls, v: Any) -> Any:
+        if v is None or isinstance(v, NonInferiorityType):
+            return v
+
+        s = str(v).strip()
+        if not s:
+            return None
+
+        # Legacy mapping
+        if s == "SUPERIORITY_OR_OTHER_LEGACY":
+            return NonInferiorityType.SUPERIORITY_OR_OTHER
+
+        # allow canonical values
+        for t in NonInferiorityType:
+            if s == t.value:
+                return t
+
+        # If you prefer strict behavior, raise here.
+        # For robustness, treat unknowns as None.
+        return None
 
 
 class Class(BaseModel):
