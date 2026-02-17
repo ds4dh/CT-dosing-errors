@@ -9,6 +9,8 @@ import argparse
 from typing import Tuple
 import transformers
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
+from sklearn.metrics import brier_score_loss
+
 
 
 class TQDMProgressBar:
@@ -24,33 +26,6 @@ class TQDMProgressBar:
 
     def close(self):
         self.pbar.close()
-
-
-def regression_metrics_hf(pred: transformers.EvalPrediction) -> dict[str, float]:
-    """
-    Adapter for Hugging Face `Trainer.compute_metrics`.
-
-    Parameters
-    ----------
-    pred : transformers.EvalPrediction
-        Contains:
-        - predictions : np.ndarray
-            Model outputs for the eval set (for regression typically shape (n,) or (n, 1)).
-        - label_ids : np.ndarray
-            Ground-truth labels (shape (n,) or (n, 1)).
-
-    Returns
-    -------
-    dict[str, float]
-        Regression metrics as returned by `regression_metrics`.
-    """
-
-    preds = pred.predictions
-    if isinstance(preds, tuple):
-        preds = preds[0]
-    preds = np.asarray(preds, dtype=np.float32).reshape(-1)
-    labels = np.asarray(pred.label_ids, dtype=np.float32).reshape(-1)
-    return regression_metrics(predictions=preds, label=labels)
 
 
 
@@ -77,78 +52,77 @@ def binary_metrics_hf(pred: transformers.EvalPrediction) -> dict[str, float]:
     return binary_metrics(predictions=np.argmax(pred.predictions, axis=-1), proba_predictions=proba_pred, label=pred.label_ids)
 
 
-def regression_metrics(predictions, label, dataset: str | None = None) -> dict[str, float]:
+def binary_metrics(predictions, proba_predictions, label, dataset: str | None = None, risk_bins: Tuple[float, float, float] = (0.02, 0.05, 0.10)) -> dict[str, float]:
     """
-    Compute standard regression metrics: RMSE, MAE, and R².
+    Compute binary classification metrics with explicit probability thresholds.
+
+    Threshold-independent metrics:
+      - ROC-AUC
+      - Brier Score
+      - Precision
+      - Recall
+      - F1 (binary and macro average)
+      - Accuracy and balanced accuracy
 
     Parameters
     ----------
-    predictions : array-like of shape (n_samples,)
-        Model-predicted continuous values.
+    proba_predictions : array-like of shape (n_samples,)
+        Predicted probabilities for the positive class.
     label : array-like of shape (n_samples,)
-        Ground-truth continuous values.
+        Ground-truth binary labels (0 or 1).
     dataset : str, optional
-        If provided, prints a header (e.g., "Performance on <dataset> dataset.").
-
+        If provided, prints a header.
+    thresholds : tuple[float, ...]
+        Probability thresholds to evaluate.
 
     Returns
     -------
     dict[str, float]
-        A mapping with keys:
-        - "RMSE": root mean squared error
-        - "MAE" : mean absolute error
-        - "R2"  : coefficient of determination
+        Flat dictionary of metrics for easy printing/logging.
     """
-
     if dataset is not None:
         print('#' * 50)
         print("Performance on " + dataset + " dataset.")
         print('#' * 50)
 
-    metrics = {
-        "RMSE": root_mean_squared_error(label, predictions),
-        "MAE": mean_absolute_error(label, predictions),
-        "R2": r2_score(label, predictions)
+    proba_predictions = np.asarray(proba_predictions, dtype=float)
+    label = np.asarray(label, dtype=int)
+
+    metrics: dict[str, float] = {
+        "ROC-AUC": roc_auc_score(label, proba_predictions),
+        "Brier Score": brier_score_loss(label, proba_predictions),
+        "Precision": precision_score(label, predictions, pos_label=1, zero_division=0),
+        "Recall": recall_score(label, predictions, pos_label=1, zero_division=0),
+        "F1": f1_score(label, predictions, pos_label=1, average="binary", zero_division=0),
+        "F1 Macro": f1_score(label, predictions, average="macro", zero_division=0),
+        "Accuracy": accuracy_score(label, predictions),
+        "Balanced Accuracy": balanced_accuracy_score(label, predictions),
     }
-    return metrics
 
+    # risk stratification
+    prevalence = float(label.mean())
+    metrics["Prevalence"] = prevalence
+    proba = np.asarray(proba_predictions, dtype=float)
 
-def binary_metrics(predictions, proba_predictions, label, dataset: str | None = None) -> dict[str, float]:
-    """
-    Compute standard metrics for a binary classification task.
+    t1, t2, t3 = risk_bins
 
-    Calculates F1-score, precision, recall, and accuracy with ``pos_label=1``.
-    Expects hard predictions in {0, 1}.
+    tier_defs = [
+        ("Low",       (proba < t1)),
+        ("Moderate",  ((proba >= t1) & (proba < t2))),
+        ("High",      ((proba >= t2) & (proba < t3))),
+        ("Very_High",  (proba >= t3)),
+    ]
 
-    Parameters
-    ----------
-    predictions : array-like of shape (n_samples,)
-        Model-predicted binary labels (0 or 1).
-    label : array-like of shape (n_samples,)
-        Ground-truth binary labels (0 or 1).
-    dataset : str, optional
-        If provided, prints a header (e.g., "Performance on <dataset> dataset.").
+    for tier_name, mask in tier_defs:
+        n = int(mask.sum())
+        n_pos = int(label[mask].sum()) if n > 0 else 0
+        event_rate = (n_pos / n) if n > 0 else np.nan
+        rel_risk = (event_rate / prevalence) if (n > 0 and prevalence > 0) else np.nan
 
-    Returns
-    -------
-    dict[str, float] containing performances metrics
-
-    """
-
-    if dataset is not None:
-        print('#' * 50)
-        print("Performance on " + dataset + " dataset.")
-        print('#' * 50)
-
-    metrics = {
-        'ROC-AUC': roc_auc_score(label, proba_predictions),
-        "F1 Macro": f1_score(label, predictions, pos_label=1, average='macro'),
-        'Balanced Accuracy': balanced_accuracy_score(label, predictions),
-        "F1 Score": f1_score(label, predictions, pos_label=1, average='binary'),
-        "Precision": precision_score(label, predictions, pos_label=1, average='binary'),
-        "Recall": recall_score(label, predictions, pos_label=1, average='binary'),
-        "Accuracy": accuracy_score(label, predictions)
-    }
+        metrics[f"{tier_name}.n"] = float(n)
+        metrics[f"{tier_name}.n_pos"] = float(n_pos)
+        metrics[f"{tier_name}.event_rate"] = float(event_rate) if not np.isnan(event_rate) else np.nan
+        metrics[f"{tier_name}.relative_risk"] = float(rel_risk) if not np.isnan(rel_risk) else np.nan
 
     return metrics
 
@@ -231,7 +205,15 @@ def create_one_global_text_feature(row: pd.Series, param: argparse.Namespace) ->
 
     global_text = []
     for col, value in row.items():
-        if col != param.label:
-            global_text.append(f"## {col}\n\n{value}\n\n")
+        if col != f"LABEL_{param.label}":
+            text_to_print = col.removeprefix("FEATURE_")
+            global_text.append(f"## {text_to_print}\n\n{value}\n\n")
 
     return "".join(global_text)
+
+
+def logit(p: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """Numerically-stable logit transform."""
+    p = np.clip(p, eps, 1.0 - eps)
+    return np.log(p / (1.0 - p))
+

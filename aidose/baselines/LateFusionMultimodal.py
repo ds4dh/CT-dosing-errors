@@ -5,14 +5,11 @@ from our_clinicalModernBERT import OurClinicalModernBERT
 import os
 from constants import LATEFUSION_MULTIMODAL_DIR
 from utils import *
-import pickle
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
-import matplotlib.pyplot as plt
 from optuna.samplers import TPESampler
 import optuna
-from sklearn.metrics import average_precision_score, roc_auc_score, f1_score
+from sklearn.metrics import roc_auc_score, f1_score
 from scipy.special import softmax
+from sklearn.linear_model import LogisticRegression
 
 
 
@@ -22,7 +19,6 @@ class LateFusionModel:
         Implementing a Multimodal model that uses a late fusion strategy. 
         
         Specifically, it combines the predictions from a fine-tuned ClinicalModernBERT model trained on textual feature and a XGBoost model trained on categorical features.
-
 
         Parameters
         ----------
@@ -59,7 +55,16 @@ class LateFusionModel:
         self._our_xgboost = OurXGBoost(param=param, dataset=dataset['categorical_data'], logdir=self._log_dir)
 
         # weights used in the late fusion strategy
-        self.weight = 0.5 # equal weight to both models; can be tuned
+        self.weight = 0.5 # equal weight to both models; will be tuned
+
+        # calibrator model
+        self._calibrator = LogisticRegression(
+            solver="lbfgs",
+            penalty="l2",
+            C=1.0,
+            max_iter=2000,
+            class_weight=None,
+        )
 
 
     def train_and_evaluate(self) -> None:
@@ -92,9 +97,77 @@ class LateFusionModel:
         self.weight = study.best_params['weight']
         print('The optimal weight found is ', self.weight)
 
-        # LateFusion model evaluation
+        print('#'* 50)
+        print('BEFORE CALIBRATION')
+        print('#'* 50)
+        # LateFusion model evaluation before calibration
         self.evaluation()
 
+        self._calibrate()
+
+        print('#'* 50)
+        print('AFTER CALIBRATION')
+        print('#'* 50)
+        # LateFusion model evaluation after calibration
+        self.evaluation(calibrate=True)
+    
+    def _calibrate(self) -> None:
+        """
+        Calibrate the FINAL fused probabilities using Platt scaling (logistic calibration).
+
+        This fits a 1D logistic regression mapping from the fused score to calibrated probability:
+            p_cal = sigmoid(a * score + b)
+
+        We fit on the validation set only, then store the calibrator for later use.
+        """
+
+        # construct proba predictions on validation set
+        xgb_val_proba = self._our_xgboost.predict_all_splits(datasets="validation")  # expected shape (N, 2)
+
+        # BERT validation logits -> probs
+        bert_val_logits = self._bert_model.predict_all_splits(dataset="validation")
+        bert_val_proba = softmax(bert_val_logits.predictions, axis=-1)  # shape (N, 2)
+
+        # Fused probabilities
+        fused_val_proba = self._fusion_strategy_proba(bert_val_proba, xgb_val_proba)
+
+        # Positive-class probability
+        p_val = np.asarray(fused_val_proba)[:, 1].astype(float)
+
+        # Labels
+        y_val = np.asarray(self._our_xgboost.y_val).astype(int)
+
+        # for stability reason, we calibrate logit(p) instead of p directly
+        X = logit(p_val).reshape(-1, 1)
+        
+        # fit the calibrator
+        self._calibrator.fit(X, y_val)
+    
+    def _apply_calibration(self, fused_proba_2col: np.ndarray) -> np.ndarray:
+        """
+        Apply the stored Platt calibrator to fused probabilities.
+
+        Parameters
+        ----------
+        fused_proba_2col : np.ndarray of shape (N, 2)
+            Fused probabilities (class 0, class 1).
+
+        Returns
+        -------
+        np.ndarray of shape (N, 2)
+            Calibrated probabilities (class 0, class 1).
+        """
+
+        p = np.asarray(fused_proba_2col)[:, 1].astype(float)
+        X = logit(p).reshape(-1, 1)
+        p_cal = self._calibrator.predict_proba(X)[:, 1]
+        p_cal = np.clip(p_cal, 1e-12, 1 - 1e-12)
+
+        out = np.zeros_like(fused_proba_2col, dtype=float)
+        out[:, 1] = p_cal
+        out[:, 0] = 1.0 - p_cal
+        return out
+        
     
     def _prepare_xgb_model(self) -> OurXGBoost:
         """
@@ -116,12 +189,9 @@ class LateFusionModel:
             print('#'*70)
             print('Performance of the loaded XGBoost model.')
             print('#'*70)
-            self._our_xgboost.load_and_evaluate()
+            self._our_xgboost.load_and_evaluate(with_calibration=False)
         else:
-            print('#'*70)
-            print('We start the hyperparameter search for the XGBoost model.')
-            print('#'*70)
-            self._our_xgboost.hyperparameter_search_and_evaluation()
+            raise NotImplementedError("Hyperparameter search for XGBoost inside LateFusionModel is not implemented.")
     
     def _fusion_strategy(self, bert_preds, xgb_preds, weight=None):
         """
@@ -170,7 +240,7 @@ class LateFusionModel:
         return combined_preds
 
 
-    def evaluation(self) -> None:
+    def evaluation(self, calibrate=False) -> None:
         print('#'*70)
         print('LateFusion model evaluation.')
         print('#'*70)
@@ -179,29 +249,63 @@ class LateFusionModel:
         xgb_train_preds, xgb_val_preds, xgb_test_preds = self._our_xgboost.predict_all_splits()
 
         bert_train_logits, bert_val_logits, bert_test_logits = self._bert_model.predict_all_splits()
-        bert_train_preds = softmax(bert_train_logits.predictions, axis=-1)
-        bert_val_preds = softmax(bert_val_logits.predictions, axis=-1)
-        bert_test_preds = softmax(bert_test_logits.predictions, axis=-1)
+        bert_train_preds = softmax(bert_train_logits.predictions, axis=-1) if self.param.label == 'wilson_label' else bert_train_logits.predictions[:, -1]
+        bert_val_preds = softmax(bert_val_logits.predictions, axis=-1) if self.param.label == 'wilson_label' else bert_val_logits.predictions[:, -1]
+        bert_test_preds = softmax(bert_test_logits.predictions, axis=-1) if self.param.label == 'wilson_label' else bert_test_logits.predictions[:, -1]
 
-        # combined predictions
-        combined_train_preds = self._fusion_strategy(bert_train_preds, xgb_train_preds)
-        combined_val_preds = self._fusion_strategy(bert_val_preds, xgb_val_preds)
-        combined_test_preds = self._fusion_strategy(bert_test_preds, xgb_test_preds)
+        # weighted combined predictions
+        combined_train_proba_preds = self._fusion_strategy_proba(bert_train_preds, xgb_train_preds)
+        combined_val_proba_preds = self._fusion_strategy_proba(bert_val_preds, xgb_val_preds)
+        combined_test_proba_preds = self._fusion_strategy_proba(bert_test_preds, xgb_test_preds)
+
+        # calibrate probabilities if requested
+        if calibrate:
+            combined_train_proba_preds = self._apply_calibration(combined_train_proba_preds)
+            combined_val_proba_preds   = self._apply_calibration(combined_val_proba_preds)
+            combined_test_proba_preds  = self._apply_calibration(combined_test_proba_preds)
+
+        # opztimize threshold for binary classification
+        best_threshold = None
+        best_f1 = -1.0
+
+        y_val = np.asarray(self._our_xgboost.y_val).astype(int)
+        val_pos_proba = np.asarray(combined_val_proba_preds)[:, 1]
+
+        thresholds = np.linspace(0.01, 0.99, 99)
+        for t in thresholds:
+            val_pred = (val_pos_proba >= t).astype(int)
+            f1 = f1_score(y_val, val_pred, average="binary", pos_label=1, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = float(t)
+
+        print('#'*70)
+        print(f"Selected threshold on validation (max F1): {best_threshold:.3f} (F1={best_f1:.5f})")
+        print('#'*70)
+
+        # Apply the chosen threshold to all splits
+        train_pos_proba = np.asarray(combined_train_proba_preds)[:, 1]
+        test_pos_proba  = np.asarray(combined_test_proba_preds)[:, 1]
+
+        combined_train_preds = (train_pos_proba >= best_threshold).astype(int)
+        combined_val_preds   = (val_pos_proba   >= best_threshold).astype(int)
+        combined_test_preds  = (test_pos_proba  >= best_threshold).astype(int)
+
 
         # training
-        train_metrics = binary_metrics(predictions=combined_train_preds, label=self._our_xgboost.y_train, dataset="training") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_train_preds, label=self._our_xgboost.y_train, dataset="training") 
+        train_metrics = binary_metrics(predictions=combined_train_preds, proba_predictions=combined_train_proba_preds[:, 1], label=self._our_xgboost.y_train, dataset="training") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_train_proba_preds, label=self._our_xgboost.y_train, dataset="training") 
         for name, value in train_metrics.items():
-            print(f"{name}: {value:.4f}")
+            print(f"{name}: {value:.5f}")
 
         # validation
-        validation_metrics = binary_metrics(predictions=combined_val_preds, label=self._our_xgboost.y_val, dataset="validation") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_val_preds, label=self._our_xgboost.y_val, dataset="validation") 
+        validation_metrics = binary_metrics(predictions=combined_val_preds, proba_predictions=combined_val_proba_preds[:, 1], label=self._our_xgboost.y_val, dataset="validation") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_val_proba_preds, label=self._our_xgboost.y_val, dataset="validation") 
         for name, value in validation_metrics.items():
-            print(f"{name}: {value:.4f}")
+            print(f"{name}: {value:.5f}")
 
         # test
-        test_metrics = binary_metrics(predictions=combined_test_preds, label=self._our_xgboost.y_test, dataset="test") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_test_preds, label=self._our_xgboost.y_test, dataset="test") 
+        test_metrics = binary_metrics(predictions=combined_test_preds, proba_predictions=combined_test_proba_preds[:, 1], label=self._our_xgboost.y_test, dataset="test") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_test_proba_preds , label=self._our_xgboost.y_test, dataset="test") 
         for name, value in test_metrics.items():
-            print(f"{name}: {value:.4f}")
+            print(f"{name}: {value:.5f}")
 
     
     def _fine_tune_weight_param(self):
@@ -212,7 +316,7 @@ class LateFusionModel:
         # models predictions        
         xgb_val_preds = self._our_xgboost.predict_all_splits(datasets='validation')
         bert_logit_pred = self._bert_model.predict_all_splits(dataset='validation')
-        bert_val_pred = softmax(bert_logit_pred.predictions, axis=-1)
+        bert_val_pred = softmax(bert_logit_pred.predictions, axis=-1) if self.param.label == 'wilson_label' else bert_logit_pred.predictions
 
 
         def objective(trial):
@@ -224,27 +328,21 @@ class LateFusionModel:
             """
             # first we define the hyperparameter searching space
             w = trial.suggest_float('weight', 0.0, 1.0)
-
-            if self.param.label == 'wilson_label':
-                performance_evaluation = f1_score
-
-            # define the metric according to the task
-            if self.param.label in ['dosing_error_rate', 'sum_dosing_errors']:
-                performance_evaluation = mean_absolute_error
+            performance_evaluation = roc_auc_score          
                 
             
             y_pred = self._fusion_strategy_proba(bert_val_pred, xgb_val_preds, weight=w)
-            score = performance_evaluation(self._our_xgboost.y_val, y_pred)
+            score = performance_evaluation(self._our_xgboost.y_val.to_numpy(), y_pred[:, -1])
             return score
         
         print("We begin to fine-tune the weight using Optuna.")
 
         # manual TPESampler construction to be able to fix the random seed
         sampler = TPESampler(seed=self.param.random_seed) 
-        study = optuna.create_study(direction="maximize" if self.param.label == 'wilson_label' else "minimize", sampler=sampler)
+        study = optuna.create_study(direction="maximize", sampler=sampler)
 
         # add a progress bar
-        progress_bar = TQDMProgressBar(self.param.num_trials, desc="Hyperparameter search")
+        progress_bar = TQDMProgressBar(self.param.late_fusion_num_trials, desc="Hyperparameter search")
 
         # conduct the hyperparameter search
         study.optimize(objective, n_trials=self.param.late_fusion_num_trials, callbacks=[progress_bar])
@@ -298,10 +396,9 @@ class LateFusionModel:
             self._bert_model.train_and_evaluate()
         else:
             print('#'*70)
-            print('# The load and evaluate a fine-tuned ClinicalModernBERT model.')
+            print('# We load a fine-tuned ClinicalModernBERT model.')
             print('#'*70)
             self._bert_model.load_model()
-            # self._load_and_evaluate_bert_model()
 
     
     def _split_feature_label(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:

@@ -1,6 +1,6 @@
 from xgboost import XGBClassifier, XGBRegressor
 import numpy as np
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.metrics import roc_auc_score
 from sklearn.metrics import mean_absolute_error
 from optuna.samplers import TPESampler
 import optuna
@@ -12,6 +12,8 @@ import argparse
 import pandas as pd
 from typing import Tuple
 from construct_hyperparameter_search import construct_hyperparameter_search
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 
 # to suppress annoying optuna default logs
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -54,13 +56,9 @@ class OurXGBoost:
         else:
             self._log_dir = logdir
 
-        # initialization of the XGBoost model according to the task
-        if self.param.label == 'wilson_label':
-            self.model = XGBClassifier()
-        elif self.param.label in ['sum_dosing_errors', 'dosing_error_rate']:
-            self.model = XGBRegressor()
-        else:
-            raise NotImplementedError('XGBoost model is only able to handle wilson_label, sum_dosing_errors and dosing_error_rate labels')
+        # initialization of the XGBoost model
+        self.model = XGBClassifier()
+
 
     def hyperparameter_search_and_evaluation(self) -> None:
         """
@@ -82,11 +80,10 @@ class OurXGBoost:
 
         # train XGBoost model using the best hyperparemter
         best_param = study.best_params
-        sample_alpha = best_param.pop("sample_alpha", None)  # pop to avoid a warning
-        self.model = XGBClassifier(**best_param) if self.param.label == 'wilson_label' else XGBRegressor(**best_param)
+        best_param.pop("sample_alpha", None)  # pop to avoid a warning
+        self.model = XGBClassifier(**best_param) 
 
-        sample_weight = None if self.param.label == "wilson_label" else np.where(self.y_train > 0, sample_alpha, 1.0)
-        self.model.fit(self.X_train, self.y_train, sample_weight=sample_weight)
+        self.model.fit(self.X_train, self.y_train)
 
         # evaluation
         self._model_evaluation()
@@ -94,9 +91,14 @@ class OurXGBoost:
         # hyperparameter saving
         self._save_hyperparameters(study=study)
 
-    def load_and_evaluate(self) -> None:
+    def load_and_evaluate(self, with_calibration=True) -> None:
         """
         Load the best hyperparameters, retrain the model, and evaluate it.
+
+        Parameters
+        ----------
+        with_calibration : bool, optional
+            Whether to apply calibration after training (default is True).
 
         Returns
         -------
@@ -106,15 +108,27 @@ class OurXGBoost:
         best_params = self._load_hyperparameters()
 
         # model initialization and training
-        sample_alpha = best_params.pop("sample_alpha", None)  # pop to avoid warning
-        self.model = XGBClassifier(**best_params) if self.param.label == 'wilson_label' else XGBRegressor(**best_params)
+        best_params.pop("sample_alpha", None)  # pop to avoid warning
+        self.model = XGBClassifier(**best_params)
 
-        sample_weight = None if self.param.label == "wilson_label" else np.where(self.y_train > 0, sample_alpha, 1.0)
+        self.model.fit(self.X_train, self.y_train)
 
-        self.model.fit(self.X_train, self.y_train, sample_weight=sample_weight)
-
+        if with_calibration:
+            print('#' * 50)
+            print('BEFORE CALIBRATION')
+            print('#' * 50)
+        
         # evaluation
         self._model_evaluation()
+
+        if with_calibration:
+            self._calibration()
+
+            print('#'*50)
+            print('AFTER MODEL CALIBRATION')
+            print('#'*50)
+
+            self._model_evaluation()
 
     def _split_feature_label(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
         """
@@ -135,9 +149,9 @@ class OurXGBoost:
             Series containing the target label column.
         """
         # extract label
-        label = df[self.param.label]
+        label = df['LABEL_' + self.param.label]
         # drop label
-        feature = df.drop(columns=[self.param.label])
+        feature = df.drop(columns=['LABEL_' + self.param.label])
         return feature, label
 
     def _load_hyperparameters(self) -> dict:
@@ -189,26 +203,74 @@ class OurXGBoost:
         print("Best model evaluation.")
         print('#' * 50)
 
+        # optimize the threshold for binary classification
+        best_threshold = None
+
+        # Get validation probabilities
+        val_proba = self.model.predict_proba(self.X_val)[:, 1]
+
+        # Search thresholds; avoid exactly 0 and 1 for numerical stability
+        thresholds = np.linspace(0.01, 0.99, 99)
+        best_f1 = -1.0
+        for t in thresholds:
+            val_pred = (val_proba >= t).astype(int)
+            f1 = f1_score(self.y_val, val_pred, average="binary", pos_label=1, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = float(t)
+
+        print('#' * 50)
+        print(f"Selected threshold on validation (max F1): {best_threshold:.3f} (F1={best_f1:.5f})")
+        print('#' * 50)
+
         # training
-        train_metrics = binary_metrics(predictions=self.model.predict(self.X_train), label=self.y_train,
-                                       dataset="training") if self.param.label == 'wilson_label' else regression_metrics(
-            predictions=self.model.predict(self.X_train), label=self.y_train, dataset="training")
+        train_proba = self.model.predict_proba(self.X_train)[:, 1]
+        train_pred = (train_proba >= best_threshold).astype(int)
+        train_metrics = binary_metrics(predictions=train_pred, 
+                                       proba_predictions=self.model.predict_proba(self.X_train)[:, 1],
+                                       label=self.y_train,
+                                       dataset="training")
         for name, value in train_metrics.items():
-            print(f"{name}: {value:.4f}")
+            print(f"{name}: {value:.5f}")
 
         # validation
-        validation_metrics = binary_metrics(predictions=self.model.predict(self.X_val), label=self.y_val,
-                                            dataset="validation") if self.param.label == 'wilson_label' else regression_metrics(
-            predictions=self.model.predict(self.X_val), label=self.y_val, dataset="validation")
+        val_proba = self.model.predict_proba(self.X_val)[:, 1]
+        val_pred = (val_proba >= best_threshold).astype(int)
+        validation_metrics = binary_metrics(predictions=val_pred, 
+                                            proba_predictions=self.model.predict_proba(self.X_val)[:, 1],
+                                            label=self.y_val,
+                                            dataset="validation")
         for name, value in validation_metrics.items():
-            print(f"{name}: {value:.4f}")
+            print(f"{name}: {value:.5f}")
 
         # test
-        test_metrics = binary_metrics(predictions=self.model.predict(self.X_test), label=self.y_test,
-                                      dataset="test") if self.param.label == 'wilson_label' else regression_metrics(
-            predictions=self.model.predict(self.X_test), label=self.y_test, dataset="test")
+        test_proba = self.model.predict_proba(self.X_test)[:, 1]
+        test_pred = (test_proba >= best_threshold).astype(int)
+        test_metrics = binary_metrics(predictions=test_pred, 
+                                      proba_predictions=self.model.predict_proba(self.X_test)[:, 1],
+                                      label=self.y_test,
+                                      dataset="test")
         for name, value in test_metrics.items():
-            print(f"{name}: {value:.4f}")
+            print(f"{name}: {value:.5f}")
+
+    
+    def _calibration(self) -> None:
+        """
+        Callibrate the XGBoost model using isotonic regression.
+        """
+        if self.param.label != "wilson_label":
+            raise NotImplementedError(
+                "Calibration is implemented only for 'wilson_label' (binary classification). "
+                "For regression targets, probability calibration is not applicable."
+        )
+
+        # Fit isotonic calibrator on validation set (post-hoc; XGBoost is already trained)
+        calibrator = CalibratedClassifierCV(FrozenEstimator(self.model), method="isotonic")
+        calibrator.fit(self.X_val, self.y_val)
+
+        # Replace the model with calibrated wrapper
+        self.model = calibrator
+
 
     def _hyperparameter_search(self) -> optuna.study.Study:
         """
@@ -235,35 +297,17 @@ class OurXGBoost:
             : return: accuracy of the model on the validation setRe
             """
 
-            # hyperparameter searching space that is independent of the task
+            # hyperparameter searching space
             params = construct_hyperparameter_search(self.param, trial, scale_pos_weight)
 
-            # specific to the binary task
-            if self.param.label == 'wilson_label':
-                model = XGBClassifier(**params)
-                performance_evaluation = roc_auc_score  # aux_precision
-                sample_weight = None
-
-            # specific to the regression task
-            if self.param.label in ['dosing_error_rate', 'sum_dosing_errors']:
-                # sample_weight is used to weight the loss function -> is used to manage class imbalance
-                # sample_alpha = trial.suggest_float("sample_alpha", 5.0, 100.0, log=True) # F1 score label_frequencies 22.68 with mae on positive label
-                # sample_alpha = trial.suggest_float("sample_alpha", 5.0, 200.0, log=True) # best for label_sum test F1 25.95 with mae
-                sample_alpha = trial.suggest_float("sample_alpha", 5.0, 200.0, log=True)
-
-                model = XGBRegressor(**params)
-                sample_weight = np.where(self.y_train > 0, sample_alpha, 1.0)
-                performance_evaluation = mean_absolute_error
+            model = XGBClassifier(**params)
+            performance_evaluation = roc_auc_score
 
             # model training and performance evaluation
-            model.fit(self.X_train, self.y_train, sample_weight=sample_weight, eval_set=[(self.X_val, self.y_val)],
+            model.fit(self.X_train, self.y_train, eval_set=[(self.X_val, self.y_val)],
                       verbose=False)
 
-            # average precision score requires proba
-            if self.param.label == 'wilson_label':
-                y_pred = model.predict_proba(self.X_val)[:, 1]
-            else:
-                y_pred = model.predict(self.X_val)
+            y_pred = model.predict_proba(self.X_val)[:, 1]
 
             score = performance_evaluation(self.y_val, y_pred)
             return score
@@ -273,8 +317,7 @@ class OurXGBoost:
 
         # manual TPESampler construction to be able to fix the random seed
         sampler = TPESampler(seed=self.param.random_seed)
-        study = optuna.create_study(direction="maximize" if self.param.label == 'wilson_label' else "minimize",
-                                    sampler=sampler)
+        study = optuna.create_study(direction="maximize",sampler=sampler)
 
         # add a progress bar
         progress_bar = TQDMProgressBar(self.param.num_trials, desc="Hyperparameter search")
@@ -307,6 +350,7 @@ class OurXGBoost:
             - If ``datasets == 'validation'``: a single array of validation predictions.
         """
         if datasets is None:
-            return self.model.predict_proba(self.X_train), self.model.predict_proba(self.X_val), self.model.predict_proba(self.X_test)
+                return self.model.predict_proba(self.X_train), self.model.predict_proba(self.X_val), self.model.predict_proba(self.X_test)
+
         elif datasets == 'validation':
             return self.model.predict_proba(self.X_val)

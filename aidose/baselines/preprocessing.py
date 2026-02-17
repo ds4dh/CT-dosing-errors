@@ -1,7 +1,9 @@
-from datasets import DatasetDict
+from datasets import DatasetDict, Value
 import pandas as pd
 import argparse
 from typing import Dict
+from utils import *
+
 
 
 def dataset_preparation(dataset: DatasetDict, param: argparse.Namespace) -> dict[str, pd.DataFrame]:
@@ -25,6 +27,8 @@ def dataset_preparation(dataset: DatasetDict, param: argparse.Namespace) -> dict
     """
     if param.model == 'XGBoost':
         return prepare_dataset_for_xgboost(dataset, param)
+    elif param.model == 'SVM':
+        return prepare_dataset_for_svm(dataset, param)
     elif param.model == 'ClinicalModernBERT':
         return prepare_dataset_for_bert(dataset, param)
     elif param.model == 'LateFusionModel':
@@ -33,9 +37,103 @@ def dataset_preparation(dataset: DatasetDict, param: argparse.Namespace) -> dict
         raise NotImplementedError(f"There is not implemented method to prepare the dataset for {param.model}.")
 
 
+def prepare_dataset_for_svm(dataset: DatasetDict, param: argparse.Namespace) -> dict[str, pd.DataFrame]:
+    """
+    Prepare a dataset for XGBoost and SVM.
+
+    Per split, this:
+        - drops string (text) features,
+        - keeps only the target label ``param.label`` (removes {sum_dosing_error, dosing_error_rate, wilson_label} \\ {param.label}),
+        - handles missing data:
+            for each prefix in ``param.drop_sample``: drop rows with NaN in columns starting with that prefix;
+            for each prefix in ``param.add_most_frequent_categorical``: treat matching one-hot columns as a group, fill NaN with 0,
+            set the majority column to 1 for previously-missing rows, cast group to bool.
+    """
+
+    cleaned_dataset = DatasetDict()
+
+    # iterate over each split
+    for set_name, data_split in dataset.items():
+
+        # drop string features, METADATA columns and not targeted labels
+        string_cols = [name for name, feature in data_split.features.items()
+                       if isinstance(feature, Value) and feature.dtype == "string"]
+        metadata_cols = [name for name in data_split.column_names if name.startswith("METADATA_")]
+        label_cols_to_drop = [name for name in data_split.column_names
+                              if name.startswith("LABEL_") and name != f"LABEL_{param.label}"]
+
+        cols_to_drop = set(string_cols) | set(metadata_cols) | set(label_cols_to_drop)
+        dataset_reduced = data_split.remove_columns(list(cols_to_drop))
+
+        # convert to dataframe
+        df_set = dataset_reduced.to_pandas()
+
+        # multihot encoding for specific categorical features (robust to NaNs)
+        need_to_encode = ['FEATURE_armGroupTypes', 'FEATURE_phases', 'FEATURE_interventionTypes']
+        for col in need_to_encode:
+            if col not in df_set.columns:
+                continue
+
+            # treat missing lists as empty lists
+            s = df_set[col].apply(lambda x: x if isinstance(x, (list, tuple, set, np.ndarray))else ([] if pd.isna(x) else [x]))
+            exploded = s.explode()
+
+            counts = pd.crosstab(exploded.index, exploded).add_prefix(col + '_').astype(float)
+
+            # Ensure all rows are present and fill absent one-hot entries with 0
+            counts = counts.reindex(df_set.index, fill_value=0.0)
+
+            df_set = pd.concat([df_set.drop(columns=[col]), counts], axis=1)
+
+        # fill NaN values for the dosing error rate label -> TODO fix that
+        label_col = f"LABEL_{param.label}"
+        if label_col in df_set.columns:
+            df_set[label_col] = df_set[label_col].fillna(0.0)
+
+        # specific preprocessing
+        if 'FEATURE_healthyVolunteers' in df_set.columns:
+            df_set['FEATURE_healthyVolunteers'] = df_set['FEATURE_healthyVolunteers'].astype(float)
+        if 'FEATURE_oversightHasDmc' in df_set.columns:
+            df_set['FEATURE_oversightHasDmc'] = df_set['FEATURE_oversightHasDmc'].astype(float)
+
+        cleaned_dataset[set_name] = df_set.infer_objects(copy=False)
+
+    # ---- Minimal fix for SVC: impute remaining NaNs (fit on train only; apply to all splits) ----
+    if "train" in cleaned_dataset:
+        train_df = cleaned_dataset["train"]
+
+        # exclude label from imputation statistics
+        label_col = f"LABEL_{param.label}"
+        feature_cols = [c for c in train_df.columns if c != label_col]
+
+        # compute per-column fill values on train
+        fill_values = {}
+        for c in feature_cols:
+            # common case: one-hot columns after crosstab -> fill with 0
+            if any(c.startswith(prefix + "_") for prefix in ['FEATURE_armGroupTypes', 'FEATURE_phases', 'FEATURE_interventionTypes']):
+                fill_values[c] = 0.0
+            else:
+                # numeric columns: use median
+                fill_values[c] = train_df[c].median() if pd.api.types.is_numeric_dtype(train_df[c]) else 0.0
+
+        # apply to all splits
+        for split_name in list(cleaned_dataset.keys()):
+            df = cleaned_dataset[split_name]
+            df[feature_cols] = df[feature_cols].fillna(fill_values)
+
+            # if anything is still NaN, fail early with useful debug info
+            remaining = df[feature_cols].isna().sum()
+            remaining = remaining[remaining > 0]
+            if len(remaining) > 0:
+                raise ValueError(f"NaNs remain in split '{split_name}' after imputation: {remaining.to_dict()}")
+
+            cleaned_dataset[split_name] = df
+
+    return cleaned_dataset
+
 def prepare_dataset_for_xgboost(dataset: DatasetDict, param: argparse.Namespace) -> dict[str, pd.DataFrame]:
     """
-    Prepare a dataset for XGBoost.
+    Prepare a dataset for XGBoost and SVM.
 
     Per split, this:
         - drops string (text) features,
@@ -59,43 +157,35 @@ def prepare_dataset_for_xgboost(dataset: DatasetDict, param: argparse.Namespace)
     cleaned_dataset = DatasetDict()
 
     # iterate over each split
-    for set_name, set in dataset.items():
+    for set_name, data_split in dataset.items():
+
+        # drop string features, METADATA columns an not targeted labels 
+        string_cols = [name for name, feature in data_split.features.items() if isinstance(feature, Value) and feature.dtype == "string"]
+        metadata_cols = [name for name in data_split.column_names if name.startswith("METADATA_")]
+        label_cols_to_drop = [name for name in data_split.column_names if name.startswith("LABEL_") and name != f"LABEL_{param.label}"]
+
+        cols_to_drop = set(string_cols) | set(metadata_cols) | set(label_cols_to_drop)      
+        dataset_reduced = data_split.remove_columns(list(cols_to_drop))
 
         # convert to datafrane
-        df_features = pd.DataFrame(set["features"])
+        df_set = dataset_reduced.to_pandas()
 
-        # filter string feature
-        string_cols = [name for name, dtype in set.features['features'].items() if dtype.dtype == 'string']
+        # multihot encoding for specific categorical features
+        need_to_encode = ['FEATURE_armGroupTypes', 'FEATURE_phases', 'FEATURE_interventionTypes']
+        for col in need_to_encode:
+            # col = 'FEATURE_' + feature_prefix
+            exploded = df_set[col].explode()
 
-        # drop text features
-        df_features = df_features.drop(columns=string_cols)
-
-        # extract the label
-        df_labels = pd.DataFrame(set['labels'])[param.label]
-
-        # concatenate label and target
-        df_set = pd.concat([df_features, df_labels], axis=1)
-
-        # delete samples wit missing data in the specific columns
-        for feature_name in param.drop_sample:
-            df_set = df_set.dropna(subset=[col for col in df_set.columns if col.startswith(feature_name)])
-
-        for feature_prefix in param.add_most_frequent_categorical:
-            targeted_columns = [col for col in df_set.columns if col.startswith(feature_prefix)]
-
-            # find missing values
-            mask = df_set[targeted_columns].isna().any(axis=1)
-
-            # fill missing data with zeros
-            df_set[targeted_columns] = df_set[targeted_columns].fillna(0.0)
-
-            # find most frequent class
-            majority_col = df_set[targeted_columns].mean(skipna=True).idxmax()
-
-            # assign '1' to the most frequent class
-            df_set.loc[mask, majority_col] = 1.0
-
-            df_set[targeted_columns] = df_set[targeted_columns].astype('bool')
+            counts = pd.crosstab(exploded.index, exploded)
+            counts = counts.add_prefix(col + '_').astype(float)
+            df_set = pd.concat([df_set.drop(columns=[col]), counts], axis=1)
+        
+        # fill NaN values for the dosing error rate label -> TODO fix that
+        df_set[f"LABEL_{param.label}"] = df_set[f"LABEL_{param.label}"].fillna(0.0)
+        
+        # specific preprocessing
+        df_set['FEATURE_healthyVolunteers'] = df_set['FEATURE_healthyVolunteers'].astype(float)
+        df_set['FEATURE_oversightHasDmc'] = df_set['FEATURE_oversightHasDmc'].astype(float)
 
         cleaned_dataset[set_name] = df_set.infer_objects(copy=False)
 
@@ -130,27 +220,29 @@ def prepare_dataset_for_bert(dataset: DatasetDict, param: argparse.Namespace) ->
     cleaned_dataset = DatasetDict()
 
     # iterate over each split
-    for set_name, set in dataset.items():
-        # convert to datafrane
-        df_features = pd.DataFrame(set["features"])
+    for set_name, data_split in dataset.items():
 
-        # filter string feature
-        string_cols = [name for name, dtype in set.features['features'].items() if dtype.dtype == 'string']
-        df_features = df_features[string_cols]
+        # filter text features
+        string_cols = [name for name, feature in data_split.features.items() if isinstance(feature, Value) 
+                       and feature.dtype == "string" and not name.startswith("METADATA_")]
 
-        # extract the label
-        df_labels = pd.DataFrame(set['labels'])[param.label]
+        # we dont use the full protocol
+        string_cols.remove("FEATURE_protocolPdfText")
 
-        # concatenate label and target
-        df_set = pd.concat([df_features, df_labels], axis=1)
+        cols_to_keep = list(dict.fromkeys(string_cols + [f"LABEL_{param.label}"])) 
+        
+        dataset_reduced = data_split.select_columns(cols_to_keep)
+        
+        # concert to dataframe
+        df_set = dataset_reduced.to_pandas()
 
-        # manage missing data
+        # fill NaN values for the dosing error rate label -> TODO fix that
+        df_set[f"LABEL_{param.label}"] = df_set[f"LABEL_{param.label}"].fillna(0.0)
+
+        # fill missing values
         df_set = df_set.fillna("UNKNOWN").astype(str)
 
-        # TODO check why we have to do that? Why are there missing values in the labels if 'dosing_error_rate' is the label
-        df_set[param.label] = df_set[param.label].replace('UNKNOWN', 0.0)
-
-        cleaned_dataset[set_name] = df_set.infer_objects(copy=False)
+        cleaned_dataset[set_name] = df_set
 
     return cleaned_dataset
 
@@ -181,28 +273,29 @@ def prepare_dataset_for_latefusion_model(dataset: DatasetDict, param: argparse.N
 
     filtered = DatasetDict()
 
-    for split_name, split in dataset.items():
-        df_features = pd.DataFrame(split["features"])
-        df_labels = pd.DataFrame(split["labels"])[param.label]
-        df = pd.concat([df_features, df_labels], axis=1)
+    #for split_name, split in dataset.items():
+    #    df_features = pd.DataFrame(split["features"])
+    #    df_labels = pd.DataFrame(split["labels"])[param.label]
+    #    df = pd.concat([df_features, df_labels], axis=1)
 
         # Start with "keep everything"
-        keep_mask = pd.Series(True, index=df.index)
+    #    keep_mask = pd.Series(True, index=df.index)
 
         # For every prefix in drop_sample, drop rows with any NaN in columns starting with that prefix
-        for prefix in getattr(param, "drop_sample", []):
-            cols = [c for c in df.columns if c.startswith(prefix)]
-            if cols:
-                keep_mask &= ~df[cols].isna().any(axis=1)
+    #    for prefix in getattr(param, "drop_sample", []):
+    #        cols = [c for c in df.columns if c.startswith(prefix)]
+    #        if cols:
+    #            keep_mask &= ~df[cols].isna().any(axis=1)
 
         # Convert mask to absolute row indices and filter the *original* split (preserves schema & types)
-        keep_indices = df.index[keep_mask].tolist()
-        filtered[split_name] = split.select(keep_indices)
+    #
+    # keep_indices = df.index[keep_mask].tolist()
+    #    filtered[split_name] = split.select(keep_indices)
 
     # Now both preparers will see identical rows across modalities
     return {
-        "text_data": prepare_dataset_for_bert(filtered, param),
-        "categorical_data": prepare_dataset_for_xgboost(filtered, param),
+        "text_data": prepare_dataset_for_bert(dataset, param),
+        "categorical_data": prepare_dataset_for_xgboost(dataset, param),
     }
 
 
