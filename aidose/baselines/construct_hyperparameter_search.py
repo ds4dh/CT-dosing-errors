@@ -2,13 +2,11 @@
 
 def construct_hyperparameter_search(param, trial, scale_pos_weight) -> dict:
     """"
-    Construct the hyperparameter search space used by Optuna for optimizing XGBoost hyperaparameters.
-    The search space is defined based on the label (classification or regression) and the model type.
+    Construct the hyperparameter search space used by Optuna for optimizing model hyperaparameters.
+    The search space is defined based on the model type.
     """
     if param.model == 'XGBoost' or param.model == 'LateFusionModel':
         return _construct_xgboost_hyperparameter_search(param, trial, scale_pos_weight)
-    elif param.model == 'SVM':
-        return _construct_svm_hyperparameter_search(param, trial, scale_pos_weight)
     else:
         raise NotImplementedError(f"There is not implemented method to construct the hyperparameter search for {param.model}.")
 
@@ -34,7 +32,7 @@ def _construct_xgboost_hyperparameter_search(param, trial, scale_pos_weight) -> 
 
     # specific to the binary task
     params["objective"] = "binary:logistic"
-    params["eval_metric"] = "auc"     # aucpr
+    params["eval_metric"] = "auc"    
     params["scale_pos_weight"] = trial.suggest_float("scale_pos_weight", 0.5 * scale_pos_weight, 2.0 * scale_pos_weight)
 
     return params

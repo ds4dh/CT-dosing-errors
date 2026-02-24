@@ -27,12 +27,8 @@ class LateFusionModel:
 
         dataset : dict[str, dict[str, pd.DataFrame]]
             A composite dictionary with the following expected keys:
-              - ``"all_data"`` : dict[str, pd.DataFrame]
-                    Cleaned split DataFrames (e.g., ``{"train": df, "validation": df, "test": df}``)
-                    that contain numeric/categorical features only (text removed).
-              - ``"historical_dataset"`` : DatasetDict-like
-                    Original Hugging Face dataset with schema information used to
-                    detect text columns (accessed via ``.features``).
+              - ``"categorical_data"`` : DatasetDict-like
+                    Dataset prepared for XGBoost, containing numeric/categorical features and the target label.
               - ``"text_data"`` : DatasetDict-like
                     Tokenized/text-prepared dataset used by the BERT module
         """
@@ -47,6 +43,10 @@ class LateFusionModel:
         # save datasets
         self._text_data = dataset['text_data']
         self._categorical_data = dataset['categorical_data']
+
+        # save test nctid
+        self._test_nctid_text = dataset['text_data']['test_nctid']["METADATA_nctId"]
+        self._test_nctid_categorical = dataset['categorical_data']['test_nctid']["METADATA_nctId"]
 
         # BERT model use to make prediction based on text feature
         self._bert_model = OurClinicalModernBERT(param=param, dataset=dataset['text_data'], logdir=self._log_dir)
@@ -101,7 +101,7 @@ class LateFusionModel:
         print('BEFORE CALIBRATION')
         print('#'* 50)
         # LateFusion model evaluation before calibration
-        self.evaluation()
+        self.evaluation(title="before_calibration")
 
         self._calibrate()
 
@@ -109,7 +109,7 @@ class LateFusionModel:
         print('AFTER CALIBRATION')
         print('#'* 50)
         # LateFusion model evaluation after calibration
-        self.evaluation(calibrate=True)
+        self.evaluation(calibrate=True, title="after_calibration")
     
     def _calibrate(self) -> None:
         """
@@ -198,7 +198,7 @@ class LateFusionModel:
         Late fusion strategy to combine predictions from BERT and XGBoost models.
 
         This method combines the predictions from the ClinicalModernBERT and XGBoost models using a weighted average approach.
-        The weight is defined accordint to the self.weights attribute.
+        The weight is defined according to the self.weights attribute.
 
         Parameters
         ----------
@@ -240,7 +240,7 @@ class LateFusionModel:
         return combined_preds
 
 
-    def evaluation(self, calibrate=False) -> None:
+    def evaluation(self, calibrate=False, title=None) -> None:
         print('#'*70)
         print('LateFusion model evaluation.')
         print('#'*70)
@@ -306,6 +306,20 @@ class LateFusionModel:
         test_metrics = binary_metrics(predictions=combined_test_preds, proba_predictions=combined_test_proba_preds[:, 1], label=self._our_xgboost.y_test, dataset="test") if self.param.label == 'wilson_label' else regression_metrics(predictions=combined_test_proba_preds , label=self._our_xgboost.y_test, dataset="test") 
         for name, value in test_metrics.items():
             print(f"{name}: {value:.5f}")
+        
+        # writing test predictions to disk for later analysis
+        test_output_df = pd.DataFrame({
+            "nctid": self._test_nctid_text,
+            "true_label": self._our_xgboost.y_test,
+            "xgb_proba": xgb_test_preds[:, 1],
+            "bert_proba": bert_test_preds[:, 1],
+            "combined_proba": combined_test_proba_preds[:, 1],
+            "combined_pred": combined_test_preds        })
+        
+        if title is not None:
+            test_output_df.to_csv(os.path.join(self._log_dir, f"test_predictions_{title}.csv"), index=False)   
+        else:
+            test_output_df.to_csv(os.path.join(self._log_dir, f"test_predictions.csv"), index=False)
 
     
     def _fine_tune_weight_param(self):
@@ -372,7 +386,7 @@ class LateFusionModel:
 
     def _prepare_bert_model(self) -> None:
         """
-        Prepare the ClinicalModernBERT model for text embedding.
+        Prepare the ClinicalModernBERT model.
 
         Depending on the configuration, this method either:
             - Fine-tunes the ClinicalModernBERT model on the training data 

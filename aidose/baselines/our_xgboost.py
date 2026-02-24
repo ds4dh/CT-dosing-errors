@@ -28,8 +28,7 @@ class OurXGBoost:
         This constructor:
           - Save the training, validation and test sets.
           - Creates the logging directory for outputs.
-          - Initializes the appropriate XGBoost model (classifier or regressor)
-            depending on the specified prediction task.
+          - Initializes the appropriate XGBoost model
 
         Parameters
         ----------

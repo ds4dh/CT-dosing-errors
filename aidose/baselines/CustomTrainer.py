@@ -49,7 +49,7 @@ class CustomTrainer(Trainer):
 
         sampler = BalancedBatchSampler(
             dataset=self.train_dataset,
-            batch_size=self.args.train_batch_size,  # This is now the computed per-device size
+            batch_size=self.args.train_batch_size,
             positive_ratio=self.config.negative_sampling_ratio
         )
 

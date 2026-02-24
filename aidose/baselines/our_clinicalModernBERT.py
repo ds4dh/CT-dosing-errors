@@ -268,7 +268,7 @@ class OurClinicalModernBERT:
         early_stopping_callback = EarlyStoppingCallback(early_stopping_patience=self.param.early_stopping_patience)
 
         # specific training arguments associated to the task
-        metric_for_best_model = "ROC-AUC"
+        metric_for_best_model = "F1"
         greater_is_better = True
         compute_metrics = binary_metrics_hf
 
