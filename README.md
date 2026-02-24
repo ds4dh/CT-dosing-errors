@@ -1,11 +1,15 @@
 # CT-medication-errors
 
-This repository contains the materials related to our paper "Establishing a benchmark for the prediction of dosing
-errors in interventional clinical trials".
+This repository provides the materials accompanying the paper  
+*“Early Risk Stratification of Dosing Errors in Clinical Trials Using Machine Learning.”*
+
+The implementation of the models described in the paper is available in the `aidose/baselines` directory, which includes a dedicated README with detailed documentation.
+
+The `Figures` directory contains Jupyter notebooks used to generate the figures presented in the manuscript, as well as additional analyses (e.g., subgroup analyses).
 
 # Using the dataset:
 
-The dataset is hosted under the HuggingFace Hub at the following link (for now private):
+The dataset is hosted under the HuggingFace Hub at the following link:
 
 `https://huggingface.co/datasets/sssohrab/ct-dosing-errors`
 
