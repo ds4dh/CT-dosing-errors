@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aidose"
-version = "1.3.0"
-description = "A benchmark for the prediction of dosing errors in interventional clinical trials. This is part of the Inosuisse project AIDosE."
+version = "1.3.1"
+description = "A dataset for the prediction of dosing errors in interventional clinical trials using ML. This is part of the Inosuisse project AIDosE."
 requires-python = ">=3.11"
 
 dependencies = [
