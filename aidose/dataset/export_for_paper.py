@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
+from aidose.dataset import HF_HUB_REPO_ID, DATASET_VERSION
 
 import os
 import logging
 from datasets import load_from_disk
 
-HF_HUB_REPO_ID = "sssohrab/ct-dosing-errors"
-HF_TOKEN = os.environ["HF_TOKEN"]
+HF_TOKEN = os.environ["HF_TOKEN_DS4DH"]
 
-END_POINT_HF_DATASET_PATH = "/data/sets/CT-DOSING-ERRORS/0.2.2"
+END_POINT_HF_DATASET_PATH = "/data/sets/CT-DOSING-ERRORS/{}".format(DATASET_VERSION)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +23,7 @@ def main() -> None:
     dataset.push_to_hub(
         HF_HUB_REPO_ID,
         token=HF_TOKEN,
-        private=True,
+        private=False,
         embed_external_files=True,
         max_shard_size="1GB",
     )
