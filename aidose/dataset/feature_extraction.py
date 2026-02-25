@@ -30,8 +30,6 @@ from typing import Any, Sequence, Dict, Tuple
 from enum import Enum
 from datetime import datetime
 
-JJ_KEYWORDS = ("johnson", "janssen", "mcneil", "j&j", "j and j")
-
 CANONICAL_COUNT_PREFIX = "count_"
 
 ATTRIBS_FEATURE_PREFIX = "FEATURE_"
@@ -116,7 +114,7 @@ def get_additional_attribs_from_ade_counts(count_attribs: AttributesList,
     dosing_error_rate = Attribute(name="dosing_error_rate",
                                   value=(
                                       sum_dosing_error.value / ct_level_ade_population
-                                      if ct_level_ade_population else None),
+                                      if ct_level_ade_population else 0.0),
                                   declared_type=float)
 
     wilson_lower_bound = Attribute(name="wilson_lower_bound",
@@ -224,9 +222,6 @@ def extract_attributes_from_study(
     attribs_metadata.append(Attribute(name="leadSponsorName", value=lead_name, declared_type=str))
 
     attribs_metadata.append(
-        Attribute(name="isJJ", value=bool(lead_name and any(k in lead_name.lower() for k in JJ_KEYWORDS)),
-                  declared_type=bool))
-    attribs_metadata.append(
         Attribute(name="leadSponsorClass", value=(lead.class_ if lead else None), declared_type=AgencyClass))
 
     # --- Oversight ---
@@ -312,11 +307,8 @@ def extract_attributes_from_study(
 
     # --- ADE enrichment ---
     ade = ade_analysis_results_for_study
-    attribs_labels.append(Attribute(name="num_ct_level_ade_terms", value=len(ade.ade_clinical), declared_type=int))
     attribs_labels.append(
         Attribute(name="ct_level_ade_population", value=_total_ade_population(ade), declared_type=int))
-    attribs_labels.append(
-        Attribute(name="num_positive_terms_matched", value=len(ade.positive_terms), declared_type=int))
 
     # --- canonical label counts ---
     attribs_ade_counts = get_ade_count_attributes_from_positive_terms(
