@@ -1,7 +1,7 @@
 # CT-medication-errors
 
 This repository provides the materials accompanying the paper  
-*“Early Risk Stratification of Dosing Errors in Clinical Trials Using Machine Learning.”* 
+*“Early Risk Stratification of Dosing Errors in Clinical Trials Using Machine Learning.”*
 
 The paper presents a dataset
 for the prediction of dosing errors in interventional clinical research, as well as a set of baseline models for this
@@ -69,14 +69,13 @@ Various global constants are set under `constants.py`, under the relevant packag
 
 # License
 
-This dataset is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC
-BY-NC-SA 4.0). You can find the full license text at https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.
+This dataset is licensed under the CC BV 4.0 license.
 
 # Acknowledgements
 
 This is part of the Innosuisse project "[114.721 IP-ICT](https://www.aramis.admin.ch/Grunddaten/?ProjectID=56650)",
 titled "AIDosE: artificial intelligence methods to estimate and predict dosing errors in interventional clinical
-research". AIDoSE is a joint collaboration between the University of Geneva, and Johnson & Johnson.
+research". AIDosE is a joint collaboration between the University of Geneva, and Johnson & Johnson.
 
 
 
