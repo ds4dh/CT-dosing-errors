@@ -1,13 +1,24 @@
 # CT-medication-errors
 
-This repository contains the materials related to our paper "Establishing a benchmark for the prediction of dosing
-errors in interventional clinical trials".
+This repository provides the materials accompanying the paper  
+*“Early Risk Stratification of Dosing Errors in Clinical Trials Using Machine Learning.”*
 
-# Using the dataset:
+The paper presents a dataset
+for the prediction of dosing errors in interventional clinical research, as well as a set of baseline models for this
+task.
 
-The dataset is hosted under the HuggingFace Hub at the following link (for now private):
+The implementation of the models described in the paper is available in the `aidose/baselines` directory.
 
-`https://huggingface.co/datasets/sssohrab/ct-dosing-errors`
+The `Figures` directory contains Jupyter notebooks used to generate the figures presented in the manuscript, as well as
+additional analyses (e.g., subgroup analyses).
+
+The `tests` directory contains unit tests for the various components of the codebase.
+
+# Using the dataset
+
+The dataset is hosted under the HuggingFace Hub at the following link:
+
+`https://huggingface.co/datasets/ds4dh/ct-dosing-errors`
 
 You can use it simply using the below commands:
 
@@ -26,9 +37,10 @@ print(ds.features)
 
 ```
 
-# Reproducing the dataset:
+# Reproducing the dataset
 
-You should first download an instance of the MedDRA terminology after having created an account under `www.meddra.org`
+In case you want to reproduce the dataset, you should first download an instance of the MedDRA terminology after having
+created an account under `www.meddra.org`
 and agreeing to their terms and conditions. This should then be placed under
 `RESOURCES_DIR/MEDDRA/MedDRA_<MEDRA_VERSION>`, where the default version is set to `MedDRA_27_1_English`.
 
@@ -54,3 +66,16 @@ python3 aidose/dataset/main.py
 The final dataset will be created under `<DATASETS_ROOT>/<DATASET_NAME>/<DATASET_VERSION/`.
 
 Various global constants are set under `constants.py`, under the relevant packages within this repository.
+
+# License
+
+This dataset is licensed under the CC BV 4.0 license.
+
+# Acknowledgements
+
+This is part of the Innosuisse project "[114.721 IP-ICT](https://www.aramis.admin.ch/Grunddaten/?ProjectID=56650)",
+titled "AIDosE: artificial intelligence methods to estimate and predict dosing errors in interventional clinical
+research". AIDosE is a joint collaboration between the University of Geneva, and Johnson & Johnson.
+
+
+
