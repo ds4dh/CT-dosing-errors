@@ -54,6 +54,7 @@ class OurXGBoost:
             os.makedirs(self._log_dir, exist_ok=True)
         else:
             self._log_dir = logdir
+            os.makedirs(logdir, exist_ok=True)
 
         # initialization of the XGBoost model
         self.model = XGBClassifier()
@@ -353,3 +354,15 @@ class OurXGBoost:
 
         elif datasets == 'validation':
             return self.model.predict_proba(self.X_val)
+
+
+    def save_test_predictions(self, filename="test_predictions.csv") -> None:
+        """Save test-set probabilities and labels to a CSV file in self._log_dir."""
+        proba = self.model.predict_proba(self.X_test)[:, 1]
+        pd.DataFrame(
+            {"label": self.y_test.to_numpy(), "proba": proba},
+            index=self.X_test.index,
+        ).to_csv(os.path.join(self._log_dir, filename))
+
+
+    
