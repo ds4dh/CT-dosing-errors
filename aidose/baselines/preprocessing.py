@@ -26,7 +26,7 @@ def dataset_preparation(dataset: DatasetDict, param: argparse.Namespace) -> dict
     Any
         The dataset transformed into the format expected by the target model.
     """
-    if param.model == 'XGBoost':
+    if param.model == 'XGBoost' or param.model == 'logistic_regression':
         return prepare_dataset_for_xgboost(dataset, param)
     elif param.model == 'ClinicalModernBERT':
         return prepare_dataset_for_bert(dataset, param)

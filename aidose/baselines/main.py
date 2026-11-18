@@ -4,6 +4,7 @@ from datasets import DatasetDict, load_from_disk
 import argparse
 from our_xgboost import OurXGBoost
 from our_clinicalModernBERT import OurClinicalModernBERT
+from our_logistic import OurLogisticRegression
 from sklearn.preprocessing import StandardScaler
 from LateFusionMultimodal import LateFusionModel
 from datasets import load_dataset, Dataset
@@ -26,8 +27,8 @@ def parse_args():
     #######################################
     # ML model
     #######################################
-    parser.add_argument('--model', action='store', type=str, default='LateFusionModel', 
-                        help='model used to conduct the predictions. Potential values are: XGBoost, ClinicalModernBERT, LateFusionModel')
+    parser.add_argument('--model', action='store', type=str, default='logistic_regression', choices=['logistic_regression', 'XGBoost', 'ClinicalModernBERT', 'LateFusionModel'],
+                        help='model used to conduct the predictions.')
     
 
     ################################
@@ -107,6 +108,12 @@ def main():
         # hyperparameter search and model evaluation
         model.hyperparameter_search_and_evaluation()
 
+        model.load_and_evaluate()
+
+    if param.model == 'logistic_regression':
+        
+        model = OurLogisticRegression(param=param, dataset=dataset)
+        model.hyperparameter_search_and_evaluation()
         model.load_and_evaluate()
     
         
